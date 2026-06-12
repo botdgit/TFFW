@@ -78,17 +78,77 @@ ENGAGEMENT_PROMPTS = {
 }
 
 
+# entity fragments (lowercase) found in headlines/teams -> hashtags
+ENTITY_HASHTAGS = {
+    "manchester united": ["#manutd", "#mufc"], "man utd": ["#manutd", "#mufc"],
+    "man united": ["#manutd"], "manchester city": ["#mancity"], "man city": ["#mancity"],
+    "liverpool": ["#liverpool", "#lfc"], "chelsea": ["#chelsea", "#cfc"],
+    "arsenal": ["#arsenal", "#afc"], "tottenham": ["#spurs", "#thfc"], "spurs": ["#spurs"],
+    "newcastle": ["#nufc"], "aston villa": ["#avfc"], "west ham": ["#westham"],
+    "everton": ["#everton"], "brighton": ["#bhafc"], "wolves": ["#wolves"],
+    "leeds": ["#lufc"], "celtic": ["#celticfc"], "rangers": ["#rangersfc"],
+    "real madrid": ["#realmadrid"], "barcelona": ["#barcelona", "#fcb"],
+    "atletico": ["#atleticomadrid"], "bayern": ["#fcbayern"],
+    "dortmund": ["#bvb"], "juventus": ["#juventus"], "inter": ["#intermilan"],
+    "ac milan": ["#acmilan"], "napoli": ["#napoli"], "psg": ["#psg"],
+    "paris saint-germain": ["#psg"], "ajax": ["#ajax"], "porto": ["#fcporto"],
+    "benfica": ["#slbenfica"], "galatasaray": ["#galatasaray"],
+    "usmnt": ["#usmnt"], "ronaldo": ["#ronaldo", "#cr7"], "messi": ["#messi"],
+    "mbappe": ["#mbappe"], "mbappé": ["#mbappe"], "haaland": ["#haaland"],
+    "bellingham": ["#bellingham"], "vinicius": ["#vinijr"], "yamal": ["#lamineyamal"],
+    "england": ["#england", "#threelions"], "scotland": ["#scotland"],
+    "wales": ["#wales"], "france": ["#france", "#lesbleus"],
+    "germany": ["#germany"], "spain": ["#spain"], "italy": ["#italy"],
+    "brazil": ["#brazil", "#selecao"], "argentina": ["#argentina"],
+    "portugal": ["#portugal"], "netherlands": ["#netherlands"],
+    "mexico": ["#mexico", "#eltri"], "canada": ["#canada", "#canmnt"],
+    "usa": ["#usa", "#usmnt"], "united states": ["#usmnt"],
+    "japan": ["#japan"], "south korea": ["#southkorea"],
+    "morocco": ["#morocco"], "croatia": ["#croatia"], "bosnia": ["#bosnia"],
+    "paraguay": ["#paraguay"], "australia": ["#australia", "#socceroos"],
+    "türkiye": ["#turkiye"], "turkey": ["#turkiye"], "haiti": ["#haiti"],
+    "switzerland": ["#switzerland"], "qatar": ["#qatar"],
+}
+
+_NAME_STOP = {
+    "World", "Cup", "FIFA", "UEFA", "Premier", "League", "Champions",
+    "United", "City", "Group", "Friday", "Saturday", "Sunday", "Madrid",
+    "Whistle", "Football", "VAR", "Stadium", "The",
+}
+
+
+def entity_hashtags(text: str) -> list[str]:
+    """Relevant hashtags from headline/team text: known clubs, nations and
+    star players, plus likely player surnames from capitalised words."""
+    low = text.lower()
+    tags: list[str] = []
+    for fragment, frag_tags in ENTITY_HASHTAGS.items():
+        if fragment in low:
+            tags.extend(frag_tags)
+    # likely person names not already covered (e.g. "McTominay", "Pogba")
+    for word in re.findall(r"[A-ZÀ-Þ][a-zà-ÿ'']{4,}", text):
+        if word in _NAME_STOP:
+            continue
+        slug = "#" + re.sub(r"[^a-z0-9]", "", word.lower())
+        if len(tags) < 14 and not any(slug in t or t in slug for t in tags):
+            tags.append(slug)
+    return tags
+
+
 def team_hashtag(team: str) -> str:
     slug = re.sub(r"[^a-z0-9]", "", team.lower())
     return f"#{slug}" if slug else ""
 
 
-def build_hashtags(fmt: str, competition_code: str = "", teams: list[str] | None = None) -> str:
+def build_hashtags(fmt: str, competition_code: str = "", teams: list[str] | None = None,
+                   headline: str = "") -> str:
     tags = list(BASE_HASHTAGS) + FORMAT_HASHTAGS.get(fmt, [])
     tags += COMPETITION_HASHTAGS.get(competition_code, [])
+    # story-specific tags from the subjects involved
+    tags += entity_hashtags(" ".join([headline or "", *(teams or [])]))
     for t in teams or []:
         ht = team_hashtag(t)
-        if ht:
+        if ht and len(ht) > 3:
             tags.append(ht)
     seen, out = set(), []
     for t in tags:

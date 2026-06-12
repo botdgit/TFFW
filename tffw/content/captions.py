@@ -38,6 +38,7 @@ def build_caption(fmt: str, facts: dict, seed: int) -> tuple[str, str]:
         fmt,
         facts.get("competition_code", ""),
         [t for t in (facts.get("home"), facts.get("away")) if t],
+        headline=facts.get("headline", ""),
     )
 
     body = None
