@@ -108,15 +108,18 @@ def _cover(photo: Image.Image, w: int, h: int, top_bias: float = 0.5) -> Image.I
 
 def _stadium_texture(img: Image.Image, seed: int) -> Image.Image:
     """Blend a licensed stadium photo into the pitch background so every
-    card has imagery (heavy brand-green duotone keeps text legible)."""
+    card has imagery (heavy brand-green duotone keeps text legible).
+    Seed is spread so consecutive posts cycle different backgrounds and
+    crop positions."""
     backgrounds = sorted(BG_DIR.glob("stadium_*.jpg"))
     if not backgrounds:
         return img
+    spread = (seed * 2654435761) & 0xFFFFFFFF  # Knuth multiplicative hash
     try:
-        photo = Image.open(backgrounds[seed % len(backgrounds)]).convert("L")
+        photo = Image.open(backgrounds[spread % len(backgrounds)]).convert("L")
     except OSError:
         return img
-    photo = _cover(photo.convert("RGB"), W, H)
+    photo = _cover(photo.convert("RGB"), W, H, top_bias=((spread >> 8) % 70) / 100)
     # duotone: map luminance into the pitch palette, then blend subtly
     photo = photo.convert("L")
     lo, hi = _hex(PITCH_BOTTOM), _hex("#2E6B3A")
@@ -370,7 +373,7 @@ def _scoreboard(fmt: str, facts: dict) -> Image.Image:
 
 
 def _headline_card(fmt: str, facts: dict) -> Image.Image:
-    img, draw = _canvas(texture_seed=len(facts.get("headline", "")))
+    img, draw = _canvas(texture_seed=sum(ord(c) for c in facts.get("headline", "x")))
     _kicker(draw, fmt)
 
     headline = (facts.get("headline") or "Football update").upper()

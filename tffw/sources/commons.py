@@ -126,10 +126,30 @@ def find_photo(query: str) -> dict | None:
             "license": license_name,
             "artist": artist or "Wikimedia Commons",
             "width": width,
+            "recently_used": _recently_used(info.get("url", "")),
         }
-        if best is None or width > best["width"]:
+        # prefer unused photos so the feed doesn't repeat imagery;
+        # among equals prefer the widest
+        if best is None or (best["recently_used"], -best["width"]) > (candidate["recently_used"], -width):
             best = candidate
+    if best and best["recently_used"]:
+        return None  # everything suitable was used recently — skip the photo
     return best
+
+
+def _recently_used(url: str) -> bool:
+    import hashlib
+
+    key = "photo_used:" + hashlib.sha256(url.encode()).hexdigest()[:20]
+    recent = {e["key"] for e in db.recent_events("photo_used", hours=72)}
+    return key in recent
+
+
+def mark_used(url: str) -> None:
+    import hashlib
+
+    key = "photo_used:" + hashlib.sha256(url.encode()).hexdigest()[:20]
+    db.upsert_event("photo_used", key, {"url": url}, "commons")
 
 
 def download(photo: dict, dest_name: str) -> str | None:
@@ -141,6 +161,7 @@ def download(photo: dict, dest_name: str) -> str | None:
             return None
         dest = config.MEDIA_DIR / dest_name
         dest.write_bytes(resp.content)
+        mark_used(photo["url"])
         return str(dest.relative_to(config.ROOT))
     except requests.RequestException as exc:
         db.log_error("commons", f"download: {exc}")
