@@ -7,7 +7,8 @@ FORMATS = (
     "FINAL WHISTLE",     # full-time results
     "TRANSFER WHISTLE",  # verified transfer news
     "VAR CHECK",         # VAR / officiating talking points
-    "TEAM SHEET",        # line-ups / team news / matchday previews
+    "TEAM SHEET",        # line-ups / squad & team news
+    "MATCHDAY",          # fixtures, previews, league tables
     "BREAKING",          # verified breaking news, injuries, big stories
 )
 
@@ -18,7 +19,8 @@ FORMAT_HASHTAGS = {
     "FINAL WHISTLE": ["#fulltime", "#results", "#matchday"],
     "TRANSFER WHISTLE": ["#transfernews", "#transferwindow", "#deadlineday"],
     "VAR CHECK": ["#var", "#refwatch"],
-    "TEAM SHEET": ["#teamnews", "#startingxi", "#matchday"],
+    "TEAM SHEET": ["#teamnews", "#startingxi"],
+    "MATCHDAY": ["#matchday", "#fixtures"],
     "BREAKING": ["#breakingnews"],
 }
 
@@ -56,6 +58,11 @@ ENGAGEMENT_PROMPTS = {
     "TEAM SHEET": [
         "Happy with this XI? 👇",
         "One change you'd make? ⬇️",
+    ],
+    "MATCHDAY": [
+        "Which one are you watching? 👇",
+        "Call your scores for today ⬇️",
+        "Game of the day? 👇",
     ],
     "BREAKING": [
         "Thoughts? 👇",

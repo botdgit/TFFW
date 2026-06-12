@@ -108,6 +108,7 @@ def run_live() -> None:
 
         base_facts = {
             "home": m["home"], "away": m["away"],
+            "home_full": m["home_full"], "away_full": m["away_full"],
             "home_score": m["home_score"], "away_score": m["away_score"],
             "competition": m["competition"], "competition_code": m["competition_code"],
         }

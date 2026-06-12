@@ -94,7 +94,40 @@ def _logo_white(height: int) -> Image.Image | None:
     return img.resize((w, height), Image.LANCZOS)
 
 
-def _canvas() -> tuple[Image.Image, ImageDraw.ImageDraw]:
+BG_DIR = config.ROOT / "assets" / "backgrounds"
+
+
+def _cover(photo: Image.Image, w: int, h: int, top_bias: float = 0.5) -> Image.Image:
+    """Cover-crop an image to exactly (w, h)."""
+    scale = max(w / photo.width, h / photo.height)
+    photo = photo.resize((int(photo.width * scale) + 1, int(photo.height * scale) + 1), Image.LANCZOS)
+    left = (photo.width - w) // 2
+    top = int((photo.height - h) * top_bias)
+    return photo.crop((left, top, left + w, top + h))
+
+
+def _stadium_texture(img: Image.Image, seed: int) -> Image.Image:
+    """Blend a licensed stadium photo into the pitch background so every
+    card has imagery (heavy brand-green duotone keeps text legible)."""
+    backgrounds = sorted(BG_DIR.glob("stadium_*.jpg"))
+    if not backgrounds:
+        return img
+    try:
+        photo = Image.open(backgrounds[seed % len(backgrounds)]).convert("L")
+    except OSError:
+        return img
+    photo = _cover(photo.convert("RGB"), W, H)
+    # duotone: map luminance into the pitch palette, then blend subtly
+    photo = photo.convert("L")
+    lo, hi = _hex(PITCH_BOTTOM), _hex("#2E6B3A")
+    duo = Image.merge("RGB", [
+        photo.point(lambda v, a=a, b=b: int(a + (b - a) * v / 255))
+        for a, b in zip(lo, hi)
+    ])
+    return Image.blend(img, duo, 0.5)
+
+
+def _canvas(texture_seed: int | None = None) -> tuple[Image.Image, ImageDraw.ImageDraw]:
     img = Image.new("RGB", (W, H), PITCH_BOTTOM)
     draw = ImageDraw.Draw(img)
 
@@ -106,6 +139,10 @@ def _canvas() -> tuple[Image.Image, ImageDraw.ImageDraw]:
             [(0, y), (W, y)],
             fill=tuple(int(a + (b - a) * t) for a, b in zip(top, bottom)),
         )
+
+    if texture_seed is not None:
+        img = _stadium_texture(img, texture_seed)
+        draw = ImageDraw.Draw(img)
 
     # soft radial glow behind the content area
     glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
@@ -228,12 +265,35 @@ def render(post_id: int, fmt: str, facts: dict) -> Path:
 
 # ── templates ───────────────────────────────────────────────────────────
 
+def _flag_band(img: Image.Image, team: str, y0: int, y1: int) -> Image.Image:
+    """Paste a darkened national flag behind a team row (no-op for clubs)."""
+    from . import flags
+
+    path = flags.flag_path(team)
+    if path is None:
+        return img
+    try:
+        flag = Image.open(path).convert("RGB")
+    except OSError:
+        return img
+    band = _cover(flag, W, y1 - y0).filter(ImageFilter.GaussianBlur(2))
+    overlay = Image.new("RGBA", (W, y1 - y0), (*_hex(PITCH_BOTTOM), 195))
+    band = Image.alpha_composite(band.convert("RGBA"), overlay).convert("RGB")
+    img.paste(band, (0, y0))
+    return img
+
+
 def _scoreboard(fmt: str, facts: dict) -> Image.Image:
     img, draw = _canvas()
-    _kicker(draw, fmt)
-    _competition(draw, facts.get("competition", ""))
 
     home, away = facts.get("home", "?"), facts.get("away", "?")
+    # national-team matches get flag panels behind the team rows
+    img = _flag_band(img, facts.get("home_full", home), 560, 850)
+    img = _flag_band(img, facts.get("away_full", away), 852, 1142)
+    draw = ImageDraw.Draw(img)
+
+    _kicker(draw, fmt)
+    _competition(draw, facts.get("competition", ""))
     hs, as_ = facts.get("home_score"), facts.get("away_score")
     has_score = hs is not None
 
@@ -284,7 +344,7 @@ def _scoreboard(fmt: str, facts: dict) -> Image.Image:
 
 
 def _headline_card(fmt: str, facts: dict) -> Image.Image:
-    img, draw = _canvas()
+    img, draw = _canvas(texture_seed=len(facts.get("headline", "")))
     _kicker(draw, fmt)
 
     headline = (facts.get("headline") or "Football update").upper()
@@ -376,7 +436,7 @@ def _photo_card(fmt: str, facts: dict) -> Image.Image:
 
 
 def _fixtures(fmt: str, facts: dict) -> Image.Image:
-    img, draw = _canvas()
+    img, draw = _canvas(texture_seed=len(facts.get("headline", "")) + 1)
     _kicker(draw, fmt)
     _competition(draw, facts.get("headline", "TODAY'S FIXTURES"))
 
@@ -567,7 +627,7 @@ def _reel_frame(img: Image.Image, t: float, fmt: str, facts: dict) -> Image.Imag
 
 
 def _table(fmt: str, facts: dict) -> Image.Image:
-    img, draw = _canvas()
+    img, draw = _canvas(texture_seed=2)
     _kicker(draw, fmt)
     _competition(draw, facts.get("headline", "TABLE"))
 
