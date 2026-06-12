@@ -1,0 +1,14 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Local scratch (the SQLite DB, generated media and dashboard ARE committed
+# by the GitHub Actions workflows so state persists between runs — do not
+# ignore data/, output/ or dashboard/)
+*.tmp
+.pytest_cache/

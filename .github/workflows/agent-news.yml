@@ -1,0 +1,51 @@
+# News / transfers loop — RSS ingestion + two-source verification, twice an hour.
+name: agent-news
+
+on:
+  schedule:
+    - cron: "7,37 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tffw-state
+  cancel-in-progress: false
+
+jobs:
+  news:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      - name: Run news pipeline
+        env:
+          FOOTBALL_DATA_TOKEN: ${{ secrets.FOOTBALL_DATA_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          BUFFER_ACCESS_TOKEN: ${{ secrets.BUFFER_ACCESS_TOKEN }}
+          BUFFER_CHANNEL_ID: ${{ vars.BUFFER_CHANNEL_ID }}
+          PUBLISHER: ${{ vars.PUBLISHER || 'buffer' }}
+          DRY_RUN: ${{ vars.DRY_RUN || 'false' }}
+          COMPETITIONS: ${{ vars.COMPETITIONS || 'PL,CL,WC' }}
+        run: |
+          python -m tffw.main news
+          python -m tffw.main publish
+
+      - name: Commit state, media and dashboard
+        run: |
+          git config user.name "tffw-agent"
+          git config user.email "tffw-agent@users.noreply.github.com"
+          git add data output dashboard
+          git diff --cached --quiet && exit 0
+          git commit -m "agent: news run $(date -u +%FT%TZ)"
+          for i in 1 2 3; do
+            git push && exit 0
+            git pull --rebase -X theirs || { git rebase --abort || true; git reset --hard "origin/${GITHUB_REF_NAME}"; exit 0; }
+          done

@@ -1,0 +1,107 @@
+"""Central configuration. Everything is read from environment variables
+(.env is loaded for local runs) so the same code runs locally and in
+GitHub Actions without changes."""
+
+import os
+from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:  # dotenv is a convenience, not a hard dependency
+    pass
+
+ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR = ROOT / "data"
+MEDIA_DIR = ROOT / "output" / "media"
+DASHBOARD_DIR = ROOT / "dashboard"
+FONT_DIR = ROOT / "assets" / "fonts"
+DB_PATH = DATA_DIR / "tffw.sqlite3"
+
+for d in (DATA_DIR, MEDIA_DIR, DASHBOARD_DIR):
+    d.mkdir(parents=True, exist_ok=True)
+
+
+def _bool(name: str, default: bool) -> bool:
+    return os.environ.get(name, str(default)).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _int(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, default))
+    except ValueError:
+        return default
+
+
+def _float(name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(name, default))
+    except ValueError:
+        return default
+
+
+# ── Safety ──────────────────────────────────────────────────────────────
+DRY_RUN = _bool("DRY_RUN", True)
+MIN_CONFIDENCE = _float("MIN_CONFIDENCE", 0.8)
+
+# ── Sports data ─────────────────────────────────────────────────────────
+FOOTBALL_DATA_TOKEN = os.environ.get("FOOTBALL_DATA_TOKEN", "")
+FOOTBALL_DATA_BASE = "https://api.football-data.org/v4"
+COMPETITIONS = [c.strip() for c in os.environ.get("COMPETITIONS", "PL,CL,WC").split(",") if c.strip()]
+THESPORTSDB_KEY = os.environ.get("THESPORTSDB_KEY", "3")
+THESPORTSDB_BASE = "https://www.thesportsdb.com/api/v1/json"
+
+# ── News ────────────────────────────────────────────────────────────────
+DEFAULT_FEEDS = [
+    "https://feeds.bbci.co.uk/sport/football/rss.xml",
+    "https://www.skysports.com/rss/12040",
+    "https://www.theguardian.com/football/rss",
+    "https://www.espn.com/espn/rss/soccer/news",
+]
+RSS_FEEDS = [
+    f.strip()
+    for f in os.environ.get("RSS_FEEDS", ",".join(DEFAULT_FEEDS)).split(",")
+    if f.strip()
+]
+# Two distinct outlets must report a story before it is considered verified.
+NEWS_MIN_SOURCES = _int("NEWS_MIN_SOURCES", 2)
+NEWS_SIMILARITY = _float("NEWS_SIMILARITY", 0.45)
+NEWS_WINDOW_HOURS = _int("NEWS_WINDOW_HOURS", 18)
+
+# ── Captions / Claude ───────────────────────────────────────────────────
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-opus-4-8")
+
+# ── Publishing ──────────────────────────────────────────────────────────
+PUBLISHER = os.environ.get("PUBLISHER", "none").strip().lower()  # none|buffer|instagram
+BUFFER_ACCESS_TOKEN = os.environ.get("BUFFER_ACCESS_TOKEN", "")
+BUFFER_CHANNEL_ID = os.environ.get("BUFFER_CHANNEL_ID", "")
+IG_USER_ID = os.environ.get("IG_USER_ID", "")
+IG_ACCESS_TOKEN = os.environ.get("IG_ACCESS_TOKEN", "")
+MEDIA_BASE_URL = os.environ.get("MEDIA_BASE_URL", "")
+
+MAX_POSTS_PER_RUN = _int("MAX_POSTS_PER_RUN", 3)
+MIN_MINUTES_BETWEEN_POSTS = _int("MIN_MINUTES_BETWEEN_POSTS", 20)
+MAX_POSTS_PER_DAY = _int("MAX_POSTS_PER_DAY", 12)
+
+# ── Brand ───────────────────────────────────────────────────────────────
+BRAND_HANDLE = os.environ.get("BRAND_HANDLE", "@thefootballfinalwhistle")
+BRAND_NAME = os.environ.get("BRAND_NAME", "The Football Final Whistle")
+BRAND_GREEN = "#0B7A3B"
+BRAND_GREEN_DARK = "#064C24"
+BRAND_WHITE = "#FFFFFF"
+BRAND_OFFWHITE = "#F2F7F3"
+
+
+def media_public_url(filename: str) -> str:
+    """Public URL for a generated image. Instagram/Buffer fetch media over
+    HTTP, so images committed by the Actions workflow are served from
+    raw.githubusercontent.com unless MEDIA_BASE_URL overrides it."""
+    if MEDIA_BASE_URL:
+        return MEDIA_BASE_URL.rstrip("/") + "/" + filename
+    repo = os.environ.get("GITHUB_REPOSITORY")  # e.g. botdgit/TFFW
+    branch = os.environ.get("GITHUB_REF_NAME", "main")
+    if repo:
+        return f"https://raw.githubusercontent.com/{repo}/{branch}/output/media/{filename}"
+    return ""

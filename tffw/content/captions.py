@@ -1,0 +1,134 @@
+"""Caption, alt-text and hashtag generation.
+
+Captions are written by Claude in the brand voice when ANTHROPIC_API_KEY is
+set; otherwise a deterministic template builder produces solid captions from
+the same verified facts. Either way, the input is ONLY the verified facts
+dict — the Claude prompt explicitly forbids adding any information that is
+not in the facts, so the caption layer can never introduce misinformation.
+"""
+
+import json
+
+from .. import config, db
+from ..logger import get_logger
+from . import formats
+
+log = get_logger("captions")
+
+BRAND_VOICE = f"""You write Instagram captions for "{config.BRAND_NAME}" \
+({config.BRAND_HANDLE}), a football commentary page.
+
+Voice: fast, sharp, modern. Opinionated but credible — strong takes, never
+invented facts. Short punchy lines. Line breaks between thoughts. 1-3 fitting
+emoji max. No clickbait, no "click link in bio", no hashtags (added separately).
+
+HARD RULES:
+- Use ONLY the facts provided in the JSON. Do not add players, scores,
+  quotes, stats, fees or any detail that is not in the facts.
+- If a fact is marked unconfirmed, reflect that ("reports say", "per ...").
+- Maximum 500 characters.
+- End with the engagement prompt provided, verbatim, as the final line.
+"""
+
+
+def build_caption(fmt: str, facts: dict, seed: int) -> tuple[str, str]:
+    """Returns (caption_with_hashtags, alt_text)."""
+    prompt_line = formats.engagement_prompt(fmt, seed)
+    hashtags = formats.build_hashtags(
+        fmt,
+        facts.get("competition_code", ""),
+        [t for t in (facts.get("home"), facts.get("away")) if t],
+    )
+
+    body = None
+    if config.ANTHROPIC_API_KEY:
+        body = _claude_caption(fmt, facts, prompt_line)
+    if not body:
+        body = _template_caption(fmt, facts, prompt_line)
+
+    caption = f"{body}\n.\n{hashtags}"
+    return caption[:2200], _alt_text(fmt, facts)
+
+
+def _claude_caption(fmt: str, facts: dict, prompt_line: str) -> str | None:
+    try:
+        import anthropic
+
+        client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+        response = client.messages.create(
+            model=config.CLAUDE_MODEL,
+            max_tokens=600,
+            system=BRAND_VOICE,
+            messages=[
+                {
+                    "role": "user",
+                    "content": (
+                        f"Format: {fmt}\n"
+                        f"Verified facts (use nothing else):\n{json.dumps(facts, indent=2)}\n"
+                        f"Engagement prompt to end with: {prompt_line}\n\n"
+                        "Write the caption."
+                    ),
+                }
+            ],
+        )
+        db.log_api("anthropic", "messages.create", 200, True, f"model={config.CLAUDE_MODEL}")
+        if response.stop_reason == "refusal":
+            return None
+        text = "".join(b.text for b in response.content if b.type == "text").strip()
+        return text or None
+    except Exception as exc:
+        log.warning("Claude caption failed, falling back to template: %s", exc)
+        db.log_error("captions", f"claude fallback: {exc}")
+        return None
+
+
+def _template_caption(fmt: str, facts: dict, prompt_line: str) -> str:
+    f = facts
+    if fmt == "FINAL WHISTLE":
+        lines = [
+            f"FT: {f.get('home')} {f.get('home_score')}-{f.get('away_score')} {f.get('away')} 🏁",
+            f"{f.get('competition', '')}".strip(),
+        ]
+    elif fmt == "LIVE WHISTLE":
+        if f.get("event") == "kickoff":
+            lines = [
+                f"WE'RE LIVE: {f.get('home')} vs {f.get('away')} 🟢",
+                f"{f.get('competition', '')}".strip(),
+            ]
+        else:
+            lines = [
+                f"{f.get('home')} {f.get('home_score')}-{f.get('away_score')} {f.get('away')} ⚽",
+                f"{f.get('competition', '')} — LIVE".strip(),
+            ]
+    elif fmt == "TRANSFER WHISTLE":
+        lines = ["TRANSFER WHISTLE 🔁", f.get("headline", ""), _source_line(f)]
+    elif fmt == "VAR CHECK":
+        lines = ["VAR CHECK 📺", f.get("headline", ""), _source_line(f)]
+    elif fmt == "TEAM SHEET":
+        lines = ["TEAM SHEET 📋", f.get("headline", ""), _source_line(f)]
+    else:  # BREAKING
+        lines = ["BREAKING 🚨", f.get("headline", ""), _source_line(f)]
+    body = "\n\n".join(l for l in lines if l)
+    return f"{body}\n\n{prompt_line}"
+
+
+def _source_line(facts: dict) -> str:
+    domains = facts.get("source_domains") or []
+    return ("via " + " · ".join(domains[:3])) if domains else ""
+
+
+def _alt_text(fmt: str, facts: dict) -> str:
+    f = facts
+    if fmt in ("FINAL WHISTLE", "LIVE WHISTLE") and f.get("home"):
+        score = (
+            f" {f.get('home_score')}-{f.get('away_score')}"
+            if f.get("home_score") is not None
+            else ""
+        )
+        return (
+            f"Green and white {config.BRAND_NAME} graphic: {fmt} — "
+            f"{f.get('home')}{score} {f.get('away')}, {f.get('competition', 'football')}."
+        )[:1000]
+    return (
+        f"Green and white {config.BRAND_NAME} graphic: {fmt} — {f.get('headline', 'football update')}"
+    )[:1000]
