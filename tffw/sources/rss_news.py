@@ -54,10 +54,11 @@ def _entries(root: ET.Element) -> list[dict]:
     """Parse both RSS 2.0 (<item>) and Atom (<entry>) feeds."""
     out = []
     for item in root.iter("item"):  # RSS 2.0
+        summary = _strip_html(_text(item, "description"))[:500]
         out.append(
             {
-                "title": _clean_title(_text(item, "title")),
-                "summary": _strip_html(_text(item, "description"))[:500],
+                "title": _repair_title(_text(item, "title"), summary),
+                "summary": summary,
                 "link": _text(item, "link"),
                 "published": _parse_date(_text(item, "pubDate")),
             }
@@ -84,6 +85,20 @@ def _text(el: ET.Element, tag: str) -> str:
 def _clean_title(title: str) -> str:
     """Some feeds (ESPN) truncate titles with a trailing ellipsis."""
     return title.rstrip(". ").rstrip("…").strip()
+
+
+def _repair_title(title: str, summary: str) -> str:
+    """A title cut off mid-sentence ("Was ref right to show three ...")
+    reads broken on a graphic. When the feed truncated it, prefer the
+    summary's first sentence if it is a sane headline length."""
+    truncated = title.rstrip().endswith(("...", "…"))
+    cleaned = _clean_title(title)
+    if not truncated or not summary:
+        return cleaned
+    first_sentence = summary.split(". ")[0].strip().rstrip(".")
+    if 20 <= len(first_sentence) <= 140:
+        return first_sentence
+    return cleaned
 
 
 def _strip_html(text: str) -> str:
