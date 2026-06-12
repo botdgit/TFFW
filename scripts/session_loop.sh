@@ -38,10 +38,10 @@ while true; do
     echo "TFFW: $n queued post(s) due — publish them via the Buffer connector now (run scripts/session_publish_queue.py for details)"
   fi
 
-  # 6-hourly heartbeat so health checks happen even when nothing is due
-  if [ $((i % 12)) -eq 1 ]; then
+  # periodic heartbeat so health checks happen even when nothing is due
+  if [ $((i % 36)) -eq 1 ]; then
     echo "TFFW heartbeat: cycle $i — check GitHub Actions runs for agent-live/news/digest are green"
   fi
 
-  sleep 1800
+  sleep 600
 done

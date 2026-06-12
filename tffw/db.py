@@ -201,10 +201,14 @@ def enqueue_post(
 
 
 def due_posts(limit: int) -> list[dict]:
+    """Due queue items — time-sensitive formats (breaking news, live match
+    moments) jump ahead of evergreen content (tables, fixture digests)."""
     with connect() as conn:
         rows = conn.execute(
             "SELECT * FROM posts WHERE status = 'queued' AND scheduled_for <= ? "
-            "ORDER BY confidence DESC, scheduled_for ASC LIMIT ?",
+            "ORDER BY CASE WHEN format IN "
+            "('BREAKING','TRANSFER WHISTLE','VAR CHECK','LIVE WHISTLE','FINAL WHISTLE') "
+            "THEN 0 ELSE 1 END, confidence DESC, scheduled_for ASC LIMIT ?",
             (now_iso(), limit),
         ).fetchall()
     out = []
