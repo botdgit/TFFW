@@ -60,7 +60,8 @@ def request(
             continue
 
         log.error("%s %s -> %d: %s", service, url, resp.status_code, resp.text[:200])
-        db.log_error(f"http:{service}", f"{method} {url} -> {resp.status_code}: {resp.text[:300]}")
+        if service != "rss":  # feed outages are routine; api_log already records them
+            db.log_error(f"http:{service}", f"{method} {url} -> {resp.status_code}: {resp.text[:300]}")
         return None
 
     db.log_error(f"http:{service}", f"{method} {url} exhausted {max_retries} retries")

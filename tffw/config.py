@@ -88,7 +88,7 @@ MEDIA_BASE_URL = os.environ.get("MEDIA_BASE_URL", "")
 REELS_ENABLED = _bool("REELS_ENABLED", True)
 MAX_POSTS_PER_RUN = _int("MAX_POSTS_PER_RUN", 5)
 MIN_MINUTES_BETWEEN_POSTS = _int("MIN_MINUTES_BETWEEN_POSTS", 5)
-MAX_POSTS_PER_DAY = _int("MAX_POSTS_PER_DAY", 40)
+MAX_POSTS_PER_DAY = _int("MAX_POSTS_PER_DAY", 60)
 
 # ── Brand ───────────────────────────────────────────────────────────────
 BRAND_HANDLE = os.environ.get("BRAND_HANDLE", "@thefootballfinalwhistle")

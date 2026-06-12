@@ -342,10 +342,10 @@ def run_publish() -> None:
         log.info("publish: paused via data/PUBLISH_PAUSED")
         return
 
-    # Daily cap
-    if db.published_count_today() >= config.MAX_POSTS_PER_DAY:
-        log.info("publish: daily cap reached (%d)", config.MAX_POSTS_PER_DAY)
-        return
+    # Daily cap — live match moments are exempt (a goal must always post)
+    cap_hit = db.published_count_today() >= config.MAX_POSTS_PER_DAY
+    if cap_hit:
+        log.info("publish: daily cap reached (%d) — live posts only", config.MAX_POSTS_PER_DAY)
 
     # Spacing between posts — live match moments bypass the gate. Non-live
     # posts go at most ONE per run (shareNow posts immediately; the loop
@@ -358,7 +358,7 @@ def run_publish() -> None:
     published_news = 0
     for post in db.due_posts(config.MAX_POSTS_PER_RUN):
         is_live = post["format"] in ("LIVE WHISTLE", "FINAL WHISTLE")
-        if not is_live and (not gap_ok or published_news >= 1):
+        if not is_live and (cap_hit or not gap_ok or published_news >= 1):
             log.info("publish: pacing holds #%d", post["id"])
             continue
         _publish_one(post)
