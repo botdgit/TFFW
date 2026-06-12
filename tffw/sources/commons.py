@@ -89,6 +89,10 @@ def find_photo(query: str) -> dict | None:
         t_tokens = set(re.findall(r"[a-zà-ÿ0-9']+", title))
         if q_tokens and len(q_tokens & t_tokens) < max(2, len(q_tokens) // 2):
             continue
+        # the lead token (player surname-first / club name) must be present
+        lead = next(iter(re.findall(r"[a-zà-ÿ0-9']+", query.lower())), "")
+        if len(lead) > 2 and lead not in t_tokens:
+            continue
         if ("women" in t_tokens or "women's" in title) != ("women" in q_tokens):
             continue
         info = (page.get("imageinfo") or [{}])[0]
