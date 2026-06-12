@@ -56,7 +56,7 @@ def _entries(root: ET.Element) -> list[dict]:
     for item in root.iter("item"):  # RSS 2.0
         out.append(
             {
-                "title": _text(item, "title"),
+                "title": _clean_title(_text(item, "title")),
                 "summary": _strip_html(_text(item, "description"))[:500],
                 "link": _text(item, "link"),
                 "published": _parse_date(_text(item, "pubDate")),
@@ -67,7 +67,7 @@ def _entries(root: ET.Element) -> list[dict]:
             link_el = entry.find(f"{ATOM}link")
             out.append(
                 {
-                    "title": _text(entry, f"{ATOM}title"),
+                    "title": _clean_title(_text(entry, f"{ATOM}title")),
                     "summary": _strip_html(_text(entry, f"{ATOM}summary"))[:500],
                     "link": link_el.get("href", "") if link_el is not None else "",
                     "published": _parse_date(_text(entry, f"{ATOM}updated")),
@@ -79,6 +79,11 @@ def _entries(root: ET.Element) -> list[dict]:
 def _text(el: ET.Element, tag: str) -> str:
     child = el.find(tag)
     return (child.text or "").strip() if child is not None else ""
+
+
+def _clean_title(title: str) -> str:
+    """Some feeds (ESPN) truncate titles with a trailing ellipsis."""
+    return title.rstrip(". ").rstrip("…").strip()
 
 
 def _strip_html(text: str) -> str:
