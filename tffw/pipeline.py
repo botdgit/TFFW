@@ -63,8 +63,9 @@ def _queue(fmt: str, headline: str, facts: dict, confidence: float, sources: lis
         except Exception as exc:
             db.log_error("reel", f"post {post_id}: {exc}")
 
-    # match moments also get a 9:16 story card, posted to Stories alongside
-    if fmt in ("LIVE WHISTLE", "FINAL WHISTLE") and facts.get("home"):
+    # match moments and fixture digests also get a 9:16 story card,
+    # posted to Stories alongside the feed post
+    if (fmt in ("LIVE WHISTLE", "FINAL WHISTLE") and facts.get("home")) or facts.get("fixture_rows"):
         graphics.render_story(post_id, fmt, facts)
 
     log.info("QUEUED #%d [%s] %s (conf %.2f)", post_id, fmt, headline, confidence)

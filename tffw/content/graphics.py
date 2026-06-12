@@ -469,7 +469,9 @@ def render_story(post_id: int, fmt: str, facts: dict) -> Path | None:
     """1080x1920 story card. Match formats reuse the reel composition's
     final frame; headline formats get a centered story layout."""
     try:
-        if facts.get("home"):
+        if facts.get("fixture_rows"):
+            img = _story_fixtures(fmt, facts)
+        elif facts.get("home"):
             img = _reel_frame(_reel_background(), 1.0, fmt, facts)
         else:
             img = _story_headline(fmt, facts)
@@ -480,6 +482,54 @@ def render_story(post_id: int, fmt: str, facts: dict) -> Path | None:
     except Exception as exc:
         log.warning("story render failed: %s", exc)
         return None
+
+
+def _story_fixtures(fmt: str, facts: dict) -> Image.Image:
+    img = _reel_background()
+    draw = ImageDraw.Draw(img)
+    badge = _logo_white(190)
+    if badge is not None:
+        img.paste(badge, ((RW - badge.width) // 2, 170), badge)
+        draw = ImageDraw.Draw(img)
+
+    f = label(40)
+    text = fmt.upper()
+    tw = _tracked_width(draw, text, f, 8)
+    pad, dot_r = 42, 10
+    total = tw + pad * 2 + dot_r * 2 + 20
+    x0 = (RW - total) / 2
+    draw.rounded_rectangle([x0, 430, x0 + total, 522], radius=46, fill=GREEN)
+    cy = 476
+    draw.ellipse([x0 + pad - dot_r, cy - dot_r, x0 + pad + dot_r, cy + dot_r], fill=PITCH_BOTTOM)
+    _tracked(draw, (x0 + pad + dot_r * 2 + 20, 452), text, f, PITCH_BOTTOM, 8)
+
+    title = (facts.get("headline") or "FIXTURES").upper()
+    fc = meta(54)
+    cw = _tracked_width(draw, title, fc, 10)
+    _tracked(draw, ((RW - cw) / 2, 590), title, fc, META, 10)
+
+    rows = facts.get("fixture_rows", [])[:8]
+    n = max(len(rows), 1)
+    row_h = min(190, 900 // n)
+    y = 760 + (900 - row_h * n) // 2
+    for r in rows:
+        line = f"{r.get('home', '?')}  v  {r.get('away', '?')}".upper()
+        font = display(64)
+        while draw.textlength(line, font=font) > RW - 160 and font.size > 36:
+            font = display(font.size - 4)
+        tw = draw.textlength(line, font=font)
+        draw.text(((RW - tw) / 2, y), line, font=font, fill=WHITE)
+        when = (r.get("time") or "").upper()
+        if when:
+            ft = meta(48)
+            tw2 = _tracked_width(draw, when, ft, 4)
+            _tracked(draw, ((RW - tw2) / 2, y + font.size + 16), when, ft, META, 4)
+        y += row_h
+
+    fy = RH - 150
+    draw.line([(90, fy), (RW - 90, fy)], fill=(255, 255, 255, 38), width=2)
+    _tracked(draw, (90, fy + 30), config.BRAND_HANDLE.upper(), meta(52), WHITE, 2)
+    return img
 
 
 def _story_headline(fmt: str, facts: dict) -> Image.Image:
