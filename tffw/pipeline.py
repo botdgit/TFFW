@@ -220,6 +220,15 @@ def run_live() -> None:
                 conf,
                 sources,
             )
+            # voiced ~30s recap reel, a few minutes after the FT card
+            if conf >= config.MIN_CONFIDENCE:
+                try:
+                    from .content import recap
+
+                    recap.queue_recap({**base_facts, "event": "full_time",
+                                       "date_label": _date_label()}, sources)
+                except Exception as exc:
+                    db.log_error("recap", f"queue_recap: {exc}")
 
         db.upsert_event("match_state", key, cur, m["source"])
 
