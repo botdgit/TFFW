@@ -41,7 +41,7 @@ while true; do
 
   n=$(python scripts/session_publish_queue.py 2>/dev/null \
       | python -c "import json,sys; print(len(json.load(sys.stdin).get('due',[])))" 2>/dev/null || echo 0)
-  if [ "${n:-0}" -gt 0 ]; then
+  if [ "${n:-0}" -gt 0 ] && [ ! -f /tmp/tffw_connector_blocked ]; then
     echo "TFFW: $n queued post(s) due — publish them via the Buffer connector now (run scripts/session_publish_queue.py for details)"
   fi
 
