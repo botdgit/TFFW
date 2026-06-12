@@ -609,6 +609,109 @@ def _story_headline(fmt: str, facts: dict) -> Image.Image:
     return img
 
 
+def render_news_reel(post_id: int, fmt: str, facts: dict) -> Path | None:
+    """Animated news reel: Ken Burns zoom on the story photo (or stadium
+    texture) with kicker drop + headline reveal. ~6s, 1080x1920."""
+    try:
+        import imageio.v2 as imageio
+        import numpy as np
+    except ImportError:
+        return None
+
+    # background source: story photo, else a stadium texture
+    src = None
+    if facts.get("photo_path"):
+        try:
+            src = Image.open(config.ROOT / facts["photo_path"]).convert("RGB")
+        except Exception:
+            src = None
+    if src is None:
+        backgrounds = sorted(BG_DIR.glob("stadium_*.jpg"))
+        if not backgrounds:
+            return None
+        seed = sum(ord(c) for c in facts.get("headline", "x"))
+        src = Image.open(backgrounds[(seed * 2654435761) % len(backgrounds)]).convert("RGB")
+        tint = Image.new("RGB", src.size, _hex(PITCH_BOTTOM))
+        src = Image.blend(src, tint, 0.45)
+
+    # pre-scale once: cover 1080x1920 with 10% headroom for the zoom
+    zoom_max = 1.10
+    base = _cover(src, int(RW * zoom_max), int(RH * zoom_max), top_bias=0.15)
+
+    # static overlay: gradients + chrome + headline (alpha-animated in)
+    overlay = Image.new("RGBA", (RW, RH), (0, 0, 0, 0))
+    od = ImageDraw.Draw(overlay)
+    dark = _hex(PITCH_BOTTOM)
+    for y in range(0, 560):
+        od.line([(0, y), (RW, y)], fill=(*dark, int(220 * (1 - y / 560))))
+    for y in range(980, RH):
+        od.line([(0, y), (RW, y)], fill=(*dark, int(245 * ((y - 980) / (RH - 980)) ** 1.3)))
+    badge = _logo_white(170)
+    if badge is not None:
+        overlay.paste(badge, ((RW - badge.width) // 2, 150), badge)
+        od = ImageDraw.Draw(overlay)
+
+    chip = Image.new("RGBA", (RW, RH), (0, 0, 0, 0))
+    cd = ImageDraw.Draw(chip)
+    f = label(40)
+    text = fmt.upper()
+    tw = _tracked_width(cd, text, f, 8)
+    pad, dot_r = 42, 10
+    total = tw + pad * 2 + dot_r * 2 + 20
+    x0 = (RW - total) / 2
+    cd.rounded_rectangle([x0, 380, x0 + total, 472], radius=46, fill=GREEN)
+    cy = 426
+    cd.ellipse([x0 + pad - dot_r, cy - dot_r, x0 + pad + dot_r, cy + dot_r], fill=PITCH_BOTTOM)
+    _tracked(cd, (x0 + pad + dot_r * 2 + 20, 402), text, f, PITCH_BOTTOM, 8)
+
+    headline = (facts.get("headline") or "").upper()
+    text_layer = Image.new("RGBA", (RW, RH), (0, 0, 0, 0))
+    td = ImageDraw.Draw(text_layer)
+    margin = 90
+    for size in (92, 80, 70, 60, 52):
+        fh = display(size)
+        lines = _wrap_px(td, headline, fh, RW - 2 * margin)
+        line_h = int(size * 1.18)
+        if len(lines) * line_h <= 620:
+            break
+    lines = lines[:6]
+    y = 1680 - len(lines) * line_h - 90
+    td.rectangle([margin, y - 36, margin + 120, y - 20], fill=GREEN)
+    for line in lines:
+        td.text((margin, y), line, font=fh, fill=WHITE)
+        y += line_h
+    fy = RH - 140
+    td.line([(margin, fy), (RW - margin, fy)], fill=(255, 255, 255, 38), width=2)
+    _tracked(td, (margin, fy + 26), config.BRAND_HANDLE.upper(), meta(50), WHITE, 2)
+
+    fps, dur = 20, 6.0
+    frames = int(fps * dur)
+    path = config.MEDIA_DIR / f"post_{post_id}.mp4"
+    try:
+        writer = imageio.get_writer(str(path), fps=fps, codec="libx264", quality=7,
+                                    macro_block_size=None, pixelformat="yuv420p")
+        try:
+            for i in range(frames):
+                t = i / (frames - 1)
+                z = 1.0 + (zoom_max - 1.0) * t  # slow push-in
+                w, h = int(RW * z), int(RH * z)
+                left = (base.width - w) // 2
+                top = (base.height - h) // 2
+                frame = base.crop((left, top, left + w, top + h)).resize((RW, RH), Image.BILINEAR)
+                frame = Image.alpha_composite(frame.convert("RGBA"), overlay)
+                frame = Image.alpha_composite(frame, _with_alpha(chip, _ease_out(_phase(t, 0.04, 0.22))))
+                frame = Image.alpha_composite(frame, _with_alpha(text_layer, _ease_out(_phase(t, 0.18, 0.45))))
+                writer.append_data(np.asarray(frame.convert("RGB")))
+        finally:
+            writer.close()
+    except Exception as exc:
+        log.warning("news reel failed: %s", exc)
+        path.unlink(missing_ok=True)
+        return None
+    log.info("rendered news reel -> %s", path.name)
+    return path
+
+
 # ── reels (animated score reveal) ───────────────────────────────────────
 
 RW, RH = 1080, 1920  # 9:16 reel canvas

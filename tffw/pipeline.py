@@ -63,10 +63,15 @@ def _queue(fmt: str, headline: str, facts: dict, confidence: float, sources: lis
     path = graphics.render(post_id, fmt, facts)
     db.update_post(post_id, image_path=str(path.relative_to(config.ROOT)))
 
-    # full-time results also get an animated score-reveal reel
-    if config.REELS_ENABLED and fmt == "FINAL WHISTLE" and facts.get("home_score") is not None:
+    # Reels drive far more reach than statics, so animate aggressively:
+    # every match moment gets the score-reveal reel; news with imagery
+    # gets a Ken Burns photo reel.
+    if config.REELS_ENABLED:
         try:
-            graphics.render_reel(post_id, fmt, facts)
+            if fmt in ("LIVE WHISTLE", "FINAL WHISTLE") and facts.get("home"):
+                graphics.render_reel(post_id, fmt, facts)
+            elif fmt in ("BREAKING", "TRANSFER WHISTLE", "VAR CHECK") and facts.get("photo_path"):
+                graphics.render_news_reel(post_id, fmt, facts)
         except Exception as exc:
             db.log_error("reel", f"post {post_id}: {exc}")
 
@@ -258,11 +263,16 @@ def run_news() -> None:
             continue
 
         fmt = verification.classify_news(c["headline"])
+        # trending = multi-outlet velocity: several outlets on one story in
+        # the window is football's "what's hot" signal. Trending stories
+        # rank first in the publish queue (confidence is the sort key).
+        trending = len(c["domains"]) >= 2
         facts = {
             "headline": c["headline"],
             "source_domains": c["domains"],
             "story_summary": c["items"][0].get("summary", "")[:280],
             "confirmed_by_sources": len(c["domains"]),
+            "trending": trending,
         }
         facts = _attach_photo(facts, c["headline"], c["claim_key"])
         _queue(fmt, c["headline"], facts, c["confidence"], c["sources"])
