@@ -337,17 +337,23 @@ def run_publish() -> None:
         log.info("publish: daily cap reached (%d)", config.MAX_POSTS_PER_DAY)
         return
 
-    # Spacing between posts — live match moments bypass the gate
+    # Spacing between posts — live match moments bypass the gate. Non-live
+    # posts go at most ONE per run (shareNow posts immediately; the loop
+    # cadence provides the pacing).
     last = db.last_publish_time()
     gap_ok = last is None or (
         datetime.now(timezone.utc) - last >= timedelta(minutes=config.MIN_MINUTES_BETWEEN_POSTS)
     )
 
+    published_news = 0
     for post in db.due_posts(config.MAX_POSTS_PER_RUN):
-        if not gap_ok and post["format"] not in ("LIVE WHISTLE", "FINAL WHISTLE"):
-            log.info("publish: spacing gate holds #%d", post["id"])
+        is_live = post["format"] in ("LIVE WHISTLE", "FINAL WHISTLE")
+        if not is_live and (not gap_ok or published_news >= 1):
+            log.info("publish: pacing holds #%d", post["id"])
             continue
         _publish_one(post)
+        if not is_live:
+            published_news += 1
 
 
 def _publish_one(post: dict) -> None:
