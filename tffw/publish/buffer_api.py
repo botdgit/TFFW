@@ -37,21 +37,23 @@ def configured() -> bool:
     return bool(config.BUFFER_ACCESS_TOKEN and config.BUFFER_CHANNEL_ID)
 
 
-def publish(caption: str, image_url: str, alt_text: str) -> str | None:
-    """Queue the post on the Instagram channel. Returns the Buffer post id
-    or None on failure."""
+def publish(caption: str, image_url: str, alt_text: str, video_url: str | None = None) -> str | None:
+    """Queue the post on the Instagram channel (image post, or reel when a
+    video URL is provided). Returns the Buffer post id or None on failure."""
+    if video_url:
+        assets = [{"video": {"url": video_url, "thumbnailUrl": image_url}}]
+        ig_meta = {"type": "reel", "shouldShareToFeed": True}
+    else:
+        assets = [{"image": {"url": image_url, "metadata": {"altText": alt_text}}}]
+        ig_meta = {"type": "post", "shouldShareToFeed": True}
     variables = {
         "input": {
             "channelId": config.BUFFER_CHANNEL_ID,
             "schedulingType": "automatic",
             "mode": "addToQueue",
             "text": caption,
-            "assets": [
-                {"image": {"url": image_url, "metadata": {"altText": alt_text}}}
-            ],
-            "metadata": {
-                "instagram": {"type": "post", "shouldShareToFeed": True}
-            },
+            "assets": assets,
+            "metadata": {"instagram": ig_meta},
             "source": "tffw-agent",
         }
     }

@@ -22,6 +22,10 @@ BRANCH = "claude/football-whistle-instagram-agent-au8zqt"
 def main() -> int:
     db.init_db()
 
+    if (config.DATA_DIR / "PUBLISH_PAUSED").exists():
+        print(json.dumps({"due": [], "reason": "publishing paused (data/PUBLISH_PAUSED)"}))
+        return 0
+
     if db.published_count_today() >= config.MAX_POSTS_PER_DAY:
         print(json.dumps({"due": [], "reason": "daily cap reached"}))
         return 0
@@ -36,17 +40,20 @@ def main() -> int:
     due = []
     for p in db.due_posts(config.MAX_POSTS_PER_RUN):
         filename = (p["image_path"] or "").split("/")[-1]
-        due.append(
-            {
-                "id": p["id"],
-                "format": p["format"],
-                "headline": p["headline"],
-                "caption": p["caption"],
-                "alt_text": p["alt_text"],
-                "confidence": p["confidence"],
-                "image_url": f"https://raw.githubusercontent.com/botdgit/TFFW/{BRANCH}/output/media/{filename}",
-            }
-        )
+        base = f"https://raw.githubusercontent.com/botdgit/TFFW/{BRANCH}/output/media"
+        item = {
+            "id": p["id"],
+            "format": p["format"],
+            "headline": p["headline"],
+            "caption": p["caption"],
+            "alt_text": p["alt_text"],
+            "confidence": p["confidence"],
+            "image_url": f"{base}/{filename}",
+        }
+        if (config.MEDIA_DIR / f"post_{p['id']}.mp4").exists():
+            item["video_url"] = f"{base}/post_{p['id']}.mp4"
+            item["instagram_type"] = "reel"
+        due.append(item)
     print(json.dumps({"due": due}, indent=2))
     return 0
 

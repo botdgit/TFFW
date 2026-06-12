@@ -81,6 +81,7 @@ IG_USER_ID = os.environ.get("IG_USER_ID", "")
 IG_ACCESS_TOKEN = os.environ.get("IG_ACCESS_TOKEN", "")
 MEDIA_BASE_URL = os.environ.get("MEDIA_BASE_URL", "")
 
+REELS_ENABLED = _bool("REELS_ENABLED", True)
 MAX_POSTS_PER_RUN = _int("MAX_POSTS_PER_RUN", 3)
 MIN_MINUTES_BETWEEN_POSTS = _int("MIN_MINUTES_BETWEEN_POSTS", 20)
 MAX_POSTS_PER_DAY = _int("MAX_POSTS_PER_DAY", 12)
@@ -88,10 +89,11 @@ MAX_POSTS_PER_DAY = _int("MAX_POSTS_PER_DAY", 12)
 # ── Brand ───────────────────────────────────────────────────────────────
 BRAND_HANDLE = os.environ.get("BRAND_HANDLE", "@thefootballfinalwhistle")
 BRAND_NAME = os.environ.get("BRAND_NAME", "The Football Final Whistle")
-BRAND_GREEN = "#0B7A3B"
-BRAND_GREEN_DARK = "#064C24"
+# Palette derived from the brand logo (assets/brand/logo.png)
+BRAND_GREEN = "#73B633"
+BRAND_GREEN_DARK = "#0C3A17"
 BRAND_WHITE = "#FFFFFF"
-BRAND_OFFWHITE = "#F2F7F3"
+BRAND_OFFWHITE = "#F4F9EF"
 
 
 def media_public_url(filename: str) -> str:

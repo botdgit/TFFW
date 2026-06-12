@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from . import config, db, verification
 from .content import captions, graphics
 from .logger import get_logger
-from .sources import espn, football_data, rss_news
+from .sources import commons, espn, football_data, rss_news
 
 log = get_logger("pipeline")
 
@@ -55,7 +55,34 @@ def _queue(fmt: str, headline: str, facts: dict, confidence: float, sources: lis
         return
     path = graphics.render(post_id, fmt, facts)
     db.update_post(post_id, image_path=str(path.relative_to(config.ROOT)))
+
+    # full-time results also get an animated score-reveal reel
+    if config.REELS_ENABLED and fmt == "FINAL WHISTLE" and facts.get("home_score") is not None:
+        try:
+            graphics.render_reel(post_id, fmt, facts)
+        except Exception as exc:
+            db.log_error("reel", f"post {post_id}: {exc}")
+
     log.info("QUEUED #%d [%s] %s (conf %.2f)", post_id, fmt, headline, confidence)
+
+
+def _attach_photo(facts: dict, headline: str, claim_key: str) -> dict:
+    """Best-effort licensed photo for a news story (never blocks posting)."""
+    try:
+        entity = commons.entity_from_headline(headline)
+        if not entity:
+            return facts
+        photo = commons.find_photo(entity)
+        if not photo:
+            return facts
+        rel = commons.download(photo, f"src_{claim_key.split(':')[-1]}.jpg")
+        if not rel:
+            return facts
+        credit = f"PHOTO: {photo['artist']} / WIKIMEDIA COMMONS ({photo['license']})"
+        return {**facts, "photo_path": rel, "photo_credit": credit}
+    except Exception as exc:
+        db.log_error("commons", f"attach_photo: {exc}")
+        return facts
 
 
 # ── live match pipeline ─────────────────────────────────────────────────
@@ -156,18 +183,14 @@ def run_news() -> None:
             continue
 
         fmt = verification.classify_news(c["headline"])
-        _queue(
-            fmt,
-            c["headline"],
-            {
-                "headline": c["headline"],
-                "source_domains": c["domains"],
-                "story_summary": c["items"][0].get("summary", "")[:280],
-                "confirmed_by_sources": len(c["domains"]),
-            },
-            c["confidence"],
-            c["sources"],
-        )
+        facts = {
+            "headline": c["headline"],
+            "source_domains": c["domains"],
+            "story_summary": c["items"][0].get("summary", "")[:280],
+            "confirmed_by_sources": len(c["domains"]),
+        }
+        facts = _attach_photo(facts, c["headline"], c["claim_key"])
+        _queue(fmt, c["headline"], facts, c["confidence"], c["sources"])
 
 
 # ── daily digest ────────────────────────────────────────────────────────
@@ -202,13 +225,21 @@ def run_digest() -> None:
         ]
     )
     if fixtures:
-        lines = [f"{m['home']} v {m['away']}" for m in fixtures[:6]]
+        rows = [
+            {
+                "home": m["home"],
+                "away": m["away"],
+                "time": m["utc_date"][11:16] + " UTC" if len(m["utc_date"]) >= 16 else "",
+            }
+            for m in fixtures[:7]
+        ]
         n = len(fixtures)
         _queue(
             "TEAM SHEET",
             f"Matchday — {n} fixture{'s' if n != 1 else ''} on {today}",
             {
-                "headline": "TODAY'S FIXTURES: " + " · ".join(lines),
+                "headline": "TODAY'S FIXTURES",
+                "fixture_rows": rows,
                 "competition_code": fixtures[0]["competition_code"],
                 "source_domains": [fixtures[0]["source"]],
             },
@@ -220,6 +251,12 @@ def run_digest() -> None:
 # ── publishing ──────────────────────────────────────────────────────────
 
 def run_publish() -> None:
+    # Manual kill switch: `data/PUBLISH_PAUSED` parks the whole queue
+    # (used e.g. while the correct Instagram channel is being connected).
+    if (config.DATA_DIR / "PUBLISH_PAUSED").exists():
+        log.info("publish: paused via data/PUBLISH_PAUSED")
+        return
+
     # Daily cap
     if db.published_count_today() >= config.MAX_POSTS_PER_DAY:
         log.info("publish: daily cap reached (%d)", config.MAX_POSTS_PER_DAY)
@@ -262,7 +299,13 @@ def _publish_one(post: dict) -> None:
         db.log_error("publish", f"post {post['id']}: no public image URL")
         return
 
-    external_id = backend.publish(post["caption"], image_url, post["alt_text"])
+    # publish as a reel when an animated version exists (Buffer backend only)
+    video_url = None
+    if config.PUBLISHER == "buffer" and (config.MEDIA_DIR / f"post_{post['id']}.mp4").exists():
+        video_url = config.media_public_url(f"post_{post['id']}.mp4")
+
+    external_id = backend.publish(post["caption"], image_url, post["alt_text"], video_url=video_url) \
+        if config.PUBLISHER == "buffer" else backend.publish(post["caption"], image_url, post["alt_text"])
     if external_id:
         db.update_post(
             post["id"], status="published", published_at=db.now_iso(), external_id=str(external_id)

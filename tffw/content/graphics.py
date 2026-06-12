@@ -1,14 +1,21 @@
 """Branded graphic rendering with Pillow.
 
-Every visual is generated from scratch using the green-and-white template —
-no third-party images or video are ever used, so there is nothing to
-license. Output is 1080x1350 (Instagram portrait feed size).
+Design system ("Final Whistle" brand):
+  • Palette from the club logo: brand green #73B633 on a deep pitch-green
+    gradient, white type, muted green-grey for meta text.
+  • Type: Anton (condensed display, headlines/scores), Archivo Black
+    (kickers/labels), Barlow Condensed (meta/supporting).
+  • Every post carries the same chrome: white logo badge top-centre,
+    format kicker chip, faint pitch markings, footer with handle + date.
+
+Every visual is generated from scratch from these templates — no
+third-party images or video are ever used, so there is nothing to license.
+Output is 1080x1350 (Instagram portrait feed size).
 """
 
-import textwrap
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from .. import config
 from ..logger import get_logger
@@ -16,72 +23,53 @@ from ..logger import get_logger
 log = get_logger("graphics")
 
 W, H = 1080, 1350
+MARGIN = 80
 
-GREEN = config.BRAND_GREEN
-GREEN_DARK = config.BRAND_GREEN_DARK
-WHITE = config.BRAND_WHITE
-OFFWHITE = config.BRAND_OFFWHITE
+# ── palette ─────────────────────────────────────────────────────────────
+GREEN = "#73B633"        # logo green
+GREEN_BRIGHT = "#8FD146"
+PITCH_TOP = "#0C3A17"    # background gradient
+PITCH_BOTTOM = "#04150A"
+WHITE = "#FFFFFF"
+META = "#8FBF6B"         # muted green for meta text
+LINE = (255, 255, 255, 22)  # faint pitch markings
+INK = "#0B2310"          # dark text on light surfaces
+CARD = "#F4F9EF"         # light surface
 
-FONT_CANDIDATES_BOLD = [
-    str(config.FONT_DIR / "Inter-Bold.ttf"),
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-    "/System/Library/Fonts/Helvetica.ttc",
-]
-FONT_CANDIDATES_REG = [
-    str(config.FONT_DIR / "Inter-Regular.ttf"),
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-    "/System/Library/Fonts/Helvetica.ttc",
-]
+FONT_DISPLAY = config.FONT_DIR / "Anton-Regular.ttf"
+FONT_LABEL = config.FONT_DIR / "ArchivoBlack-Regular.ttf"
+FONT_META = config.FONT_DIR / "BarlowCondensed-SemiBold.ttf"
+FONT_META_LIGHT = config.FONT_DIR / "BarlowCondensed-Medium.ttf"
+LOGO = config.ROOT / "assets" / "brand" / "logo.png"
+_LOGO_WHITE_CACHE = config.ROOT / "assets" / "brand" / "logo_white.png"
+
+_FALLBACK = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
 
-def _font(candidates: list[str], size: int) -> ImageFont.FreeTypeFont:
-    for path in candidates:
-        if Path(path).exists():
+def _font(path: Path, size: int) -> ImageFont.FreeTypeFont:
+    for candidate in (path, Path(_FALLBACK)):
+        if candidate.exists():
             try:
-                return ImageFont.truetype(path, size)
+                return ImageFont.truetype(str(candidate), size)
             except OSError:
                 continue
     return ImageFont.load_default(size)
 
 
-def bold(size: int) -> ImageFont.FreeTypeFont:
-    return _font(FONT_CANDIDATES_BOLD, size)
+def display(size: int) -> ImageFont.FreeTypeFont:
+    return _font(FONT_DISPLAY, size)
 
 
-def regular(size: int) -> ImageFont.FreeTypeFont:
-    return _font(FONT_CANDIDATES_REG, size)
+def label(size: int) -> ImageFont.FreeTypeFont:
+    return _font(FONT_LABEL, size)
 
 
-def render(post_id: int, fmt: str, facts: dict) -> Path:
-    """Render the graphic for a post; returns the file path."""
-    if fmt in ("FINAL WHISTLE", "LIVE WHISTLE") and facts.get("home"):
-        img = _scoreboard(fmt, facts)
-    elif fmt == "TEAM SHEET" and facts.get("table_rows"):
-        img = _table(fmt, facts)
-    else:
-        img = _headline_card(fmt, facts)
-
-    path = config.MEDIA_DIR / f"post_{post_id}.png"
-    img.save(path, "PNG", optimize=True)
-    log.info("rendered %s -> %s", fmt, path.name)
-    return path
+def meta(size: int) -> ImageFont.FreeTypeFont:
+    return _font(FONT_META, size)
 
 
-# ── shared chrome ───────────────────────────────────────────────────────
-
-def _canvas() -> tuple[Image.Image, ImageDraw.ImageDraw]:
-    img = Image.new("RGB", (W, H), OFFWHITE)
-    draw = ImageDraw.Draw(img)
-    # vertical green gradient header band
-    for y in range(0, 360):
-        blend = y / 360
-        c1 = _hex(GREEN_DARK)
-        c2 = _hex(GREEN)
-        col = tuple(int(a + (b - a) * blend) for a, b in zip(c1, c2))
-        draw.line([(0, y), (W, y)], fill=col)
-    return img, draw
+def meta_light(size: int) -> ImageFont.FreeTypeFont:
+    return _font(FONT_META_LIGHT, size)
 
 
 def _hex(h: str) -> tuple[int, int, int]:
@@ -89,69 +77,120 @@ def _hex(h: str) -> tuple[int, int, int]:
     return tuple(int(h[i : i + 2], 16) for i in (0, 2, 4))
 
 
-def _badge(draw: ImageDraw.ImageDraw, fmt: str) -> None:
-    f = bold(54)
-    text = f"●  {fmt}"
-    tw = draw.textlength(text, font=f)
-    x, y = 60, 70
-    draw.rounded_rectangle([x - 24, y - 18, x + tw + 28, y + 78], radius=18, fill=WHITE)
-    draw.text((x, y), text, font=f, fill=GREEN_DARK)
+# ── shared chrome ───────────────────────────────────────────────────────
+
+def _logo_white(height: int) -> Image.Image | None:
+    """Logo recoloured to white (it is single-colour green on alpha)."""
+    if not LOGO.exists():
+        return None
+    if not _LOGO_WHITE_CACHE.exists():
+        src = Image.open(LOGO).convert("RGBA")
+        white = Image.new("RGBA", src.size, (255, 255, 255, 0))
+        white.putalpha(src.getchannel("A"))
+        _LOGO_WHITE_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        white.save(_LOGO_WHITE_CACHE)
+    img = Image.open(_LOGO_WHITE_CACHE).convert("RGBA")
+    w = int(img.width * height / img.height)
+    return img.resize((w, height), Image.LANCZOS)
+
+
+def _canvas() -> tuple[Image.Image, ImageDraw.ImageDraw]:
+    img = Image.new("RGB", (W, H), PITCH_BOTTOM)
+    draw = ImageDraw.Draw(img)
+
+    # vertical pitch gradient
+    top, bottom = _hex(PITCH_TOP), _hex(PITCH_BOTTOM)
+    for y in range(H):
+        t = y / H
+        draw.line(
+            [(0, y), (W, y)],
+            fill=tuple(int(a + (b - a) * t) for a, b in zip(top, bottom)),
+        )
+
+    # soft radial glow behind the content area
+    glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    gd = ImageDraw.Draw(glow)
+    gd.ellipse([W // 2 - 520, 330, W // 2 + 520, 1180], fill=(115, 182, 51, 26))
+    glow = glow.filter(ImageFilter.GaussianBlur(180))
+    img.paste(Image.alpha_composite(img.convert("RGBA"), glow).convert("RGB"), (0, 0))
+    draw = ImageDraw.Draw(img)
+
+    # faint pitch markings: centre circle + halfway line, off-canvas right
+    marks = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    md = ImageDraw.Draw(marks)
+    md.ellipse([W - 420, -260, W + 320, 480], outline=LINE, width=3)
+    md.ellipse([W - 300, -140, W + 200, 360], outline=LINE, width=3)
+    md.line([(0, 132), (W, 132)], fill=(255, 255, 255, 0))
+    md.ellipse([-260, H - 420, 300, H + 140], outline=LINE, width=3)
+    img.paste(Image.alpha_composite(img.convert("RGBA"), marks).convert("RGB"), (0, 0))
+    draw = ImageDraw.Draw(img)
+
+    # logo badge, top centre
+    badge = _logo_white(150)
+    if badge is not None:
+        img.paste(badge, ((W - badge.width) // 2, 56), badge)
+
+    return img, draw
+
+
+def _tracked(draw: ImageDraw.ImageDraw, xy: tuple[float, float], text: str,
+             font: ImageFont.FreeTypeFont, fill, tracking: int = 6) -> float:
+    """Draw text with letterspacing; returns end x."""
+    x, y = xy
+    for ch in text:
+        draw.text((x, y), ch, font=font, fill=fill)
+        x += draw.textlength(ch, font=font) + tracking
+    return x
+
+
+def _tracked_width(draw: ImageDraw.ImageDraw, text: str,
+                   font: ImageFont.FreeTypeFont, tracking: int = 6) -> float:
+    return sum(draw.textlength(c, font=font) + tracking for c in text) - (tracking if text else 0)
+
+
+def _kicker(draw: ImageDraw.ImageDraw, fmt: str, y: int = 252) -> None:
+    """Centered format chip: ● FORMAT NAME on a green pill."""
+    f = label(34)
+    text = fmt.upper()
+    tw = _tracked_width(draw, text, f, 8)
+    pad, dot_r = 38, 9
+    total = tw + pad * 2 + dot_r * 2 + 18
+    x0 = (W - total) / 2
+    draw.rounded_rectangle([x0, y, x0 + total, y + 78], radius=39, fill=GREEN)
+    cy = y + 39
+    draw.ellipse([x0 + pad - dot_r, cy - dot_r, x0 + pad + dot_r, cy + dot_r], fill=PITCH_BOTTOM)
+    _tracked(draw, (x0 + pad + dot_r * 2 + 18, y + 17), text, f, PITCH_BOTTOM, 8)
 
 
 def _footer(draw: ImageDraw.ImageDraw, sub: str = "") -> None:
-    draw.rectangle([0, H - 130, W, H], fill=GREEN_DARK)
-    f = bold(40)
-    draw.text((60, H - 100), config.BRAND_HANDLE, font=f, fill=WHITE)
+    y = H - 118
+    draw.line([(MARGIN, y), (W - MARGIN, y)], fill=(255, 255, 255, 38), width=2)
+    f = meta(44)
+    _tracked(draw, (MARGIN, y + 28), config.BRAND_HANDLE.upper(), f, WHITE, 2)
     if sub:
-        fr = regular(32)
-        tw = draw.textlength(sub, font=fr)
-        draw.text((W - 60 - tw, H - 94), sub[:48], font=fr, fill=OFFWHITE)
+        fr = meta_light(42)
+        tw = _tracked_width(draw, sub.upper(), fr, 4)
+        _tracked(draw, (W - MARGIN - tw, y + 30), sub.upper(), fr, META, 4)
 
 
-def _whistle_stripe(draw: ImageDraw.ImageDraw) -> None:
-    draw.rectangle([0, 352, W, 368], fill=GREEN_DARK)
+def _competition(draw: ImageDraw.ImageDraw, text: str, y: int = 372) -> None:
+    if not text:
+        return
+    f = meta(46)
+    t = text.upper()
+    tw = _tracked_width(draw, t, f, 10)
+    _tracked(draw, ((W - tw) / 2, y), t, f, META, 10)
 
 
-# ── templates ───────────────────────────────────────────────────────────
-
-def _scoreboard(fmt: str, facts: dict) -> Image.Image:
-    img, draw = _canvas()
-    _badge(draw, fmt)
-    comp = facts.get("competition", "")
-    if comp:
-        f = regular(40)
-        draw.text((60, 240), comp.upper(), font=f, fill=OFFWHITE)
-    _whistle_stripe(draw)
-
-    home, away = facts.get("home", "?"), facts.get("away", "?")
-    hs, as_ = facts.get("home_score"), facts.get("away_score")
-    score = f"{hs} - {as_}" if hs is not None else "VS"
-
-    fscore = bold(190)
-    sw = draw.textlength(score, font=fscore)
-    draw.text(((W - sw) / 2, 560), score, font=fscore, fill=GREEN_DARK)
-
-    fteam = bold(64)
-    for team, y in ((home, 450), (away, 820)):
-        lines = textwrap.wrap(team, 22) or ["?"]
-        for i, line in enumerate(lines[:2]):
-            tw = draw.textlength(line, font=fteam)
-            draw.text(((W - tw) / 2, y + i * 72), line, font=fteam, fill="#1A1A1A")
-
-    status = "FULL-TIME" if fmt == "FINAL WHISTLE" else facts.get("status_label", "LIVE")
-    fst = bold(48)
-    tw = draw.textlength(status, font=fst)
-    draw.rounded_rectangle(
-        [(W - tw) / 2 - 36, 1010, (W + tw) / 2 + 36, 1100], radius=20, fill=GREEN
-    )
-    draw.text(((W - tw) / 2, 1028), status, font=fst, fill=WHITE)
-
-    _footer(draw, facts.get("date_label", ""))
-    return img
+def _fit_display(draw: ImageDraw.ImageDraw, text: str, max_w: int,
+                 start: int, floor: int = 40) -> ImageFont.FreeTypeFont:
+    size = start
+    while size > floor and draw.textlength(text, font=display(size)) > max_w:
+        size -= 4
+    return display(size)
 
 
 def _wrap_px(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, max_w: int) -> list[str]:
-    """Wrap text by measured pixel width rather than character count."""
     lines, current = [], ""
     for word in text.split():
         candidate = f"{current} {word}".strip()
@@ -166,62 +205,413 @@ def _wrap_px(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont,
     return lines
 
 
-def _headline_card(fmt: str, facts: dict) -> Image.Image:
+# ── entry point ─────────────────────────────────────────────────────────
+
+def render(post_id: int, fmt: str, facts: dict) -> Path:
+    """Render the graphic for a post; returns the file path."""
+    if facts.get("table_rows"):
+        img = _table(fmt, facts)
+    elif facts.get("fixture_rows"):
+        img = _fixtures(fmt, facts)
+    elif fmt in ("FINAL WHISTLE", "LIVE WHISTLE") and facts.get("home"):
+        img = _scoreboard(fmt, facts)
+    elif facts.get("photo_path"):
+        img = _photo_card(fmt, facts)
+    else:
+        img = _headline_card(fmt, facts)
+
+    path = config.MEDIA_DIR / f"post_{post_id}.png"
+    img.save(path, "PNG", optimize=True)
+    log.info("rendered %s -> %s", fmt, path.name)
+    return path
+
+
+# ── templates ───────────────────────────────────────────────────────────
+
+def _scoreboard(fmt: str, facts: dict) -> Image.Image:
     img, draw = _canvas()
-    _badge(draw, fmt)
-    f = regular(40)
-    draw.text((60, 240), config.BRAND_NAME.upper(), font=f, fill=OFFWHITE)
-    _whistle_stripe(draw)
+    _kicker(draw, fmt)
+    _competition(draw, facts.get("competition", ""))
 
-    headline = facts.get("headline", "Football update")
-    max_w = W - 120
-    # pick the largest size whose wrapped text fits the body area
-    for size in (92, 78, 64, 54):
-        fh = bold(size)
-        lines = _wrap_px(draw, headline, fh, max_w)
-        if len(lines) * (size + 22) <= 620:
-            break
-    lines = lines[:8]
-    y = 460
-    for line in lines:
-        draw.text((60, y), line, font=fh, fill="#1A1A1A")
-        y += size + 22
+    home, away = facts.get("home", "?"), facts.get("away", "?")
+    hs, as_ = facts.get("home_score"), facts.get("away_score")
+    has_score = hs is not None
 
-    domains = facts.get("source_domains") or []
-    if domains:
-        fs = regular(36)
-        draw.text((60, H - 220), "Sources: " + " · ".join(domains[:3]), font=fs, fill="#5A6B5F")
+    status = "FULL-TIME" if fmt == "FINAL WHISTLE" else facts.get("status_label", "LIVE")
+
+    # status pill
+    f = label(30)
+    tw = _tracked_width(draw, status, f, 6)
+    pad = 30
+    x0 = (W - tw - pad * 2) / 2
+    y0 = 478
+    draw.rounded_rectangle([x0, y0, x0 + tw + pad * 2, y0 + 64], radius=14,
+                           outline=GREEN, width=3)
+    _tracked(draw, (x0 + pad, y0 + 14), status, f, GREEN_BRIGHT, 6)
+
+    # team rows — names left, scores right, divider between
+    score_x = W - MARGIN
+    name_max = W - 2 * MARGIN - 220 if has_score else W - 2 * MARGIN
+    rows = [(home, hs, 640), (away, as_, 880)]
+
+    # one shared name size so both rows match
+    size = 110
+    for name, _, _ in rows:
+        f_try = _fit_display(draw, name.upper(), name_max, size)
+        size = min(size, f_try.size)
+    fname = display(size)
+    fscore = display(150)
+
+    for name, score, y in rows:
+        ny = y + (150 - size) // 2 + 10
+        draw.text((MARGIN, ny), name.upper(), font=fname, fill=WHITE)
+        if has_score:
+            s = str(score)
+            sw = draw.textlength(s, font=fscore)
+            draw.text((score_x - sw, y), s, font=fscore, fill=GREEN_BRIGHT)
+
+    if not has_score:
+        # kick-off card: "VS" divider between the rows
+        f = display(64)
+        tw = draw.textlength("VS", font=f)
+        draw.text(((W - tw) / 2, 808), "VS", font=f, fill=GREEN)
+        # nudge rows apart visually by drawing nothing else
+    else:
+        draw.line([(MARGIN, 850), (W - MARGIN, 850)], fill=(255, 255, 255, 36), width=2)
 
     _footer(draw, facts.get("date_label", ""))
     return img
 
 
+def _headline_card(fmt: str, facts: dict) -> Image.Image:
+    img, draw = _canvas()
+    _kicker(draw, fmt)
+
+    headline = (facts.get("headline") or "Football update").upper()
+    max_w = W - 2 * MARGIN
+
+    # choose largest display size whose wrapped block fits the body band
+    band_top, band_bottom = 420, 1090
+    for size in (118, 102, 88, 76, 64, 54):
+        fh = display(size)
+        lines = _wrap_px(draw, headline, fh, max_w)
+        line_h = int(size * 1.18)
+        if len(lines) * line_h <= (band_bottom - band_top - 80):
+            break
+    lines = lines[:8]
+    block_h = len(lines) * line_h
+    y = band_top + (band_bottom - band_top - block_h) // 2
+
+    # green tick mark above the headline
+    draw.rectangle([MARGIN, y - 36, MARGIN + 110, y - 22], fill=GREEN)
+
+    for line in lines:
+        draw.text((MARGIN, y), line, font=fh, fill=WHITE)
+        y += line_h
+
+    domains = facts.get("source_domains") or []
+    if domains:
+        f = meta_light(40)
+        src = "SOURCES: " + "  ·  ".join(d.upper() for d in domains[:3])
+        _tracked(draw, (MARGIN, 1118), src, f, META, 3)
+
+    _footer(draw, facts.get("date_label", ""))
+    return img
+
+
+def _photo_card(fmt: str, facts: dict) -> Image.Image:
+    """News card with a licensed Commons photo: image fills the upper
+    two-thirds, blends into the pitch gradient, headline below, license
+    attribution rendered on-card (license requirement)."""
+    img, _ = _canvas()
+    photo_file = config.ROOT / facts["photo_path"]
+    try:
+        photo = Image.open(photo_file).convert("RGB")
+    except OSError:
+        return _headline_card(fmt, facts)
+
+    # cover-crop to 1080 x 780
+    target_w, target_h = W, 780
+    scale = max(target_w / photo.width, target_h / photo.height)
+    photo = photo.resize((int(photo.width * scale) + 1, int(photo.height * scale) + 1), Image.LANCZOS)
+    left = (photo.width - target_w) // 2
+    top = max((photo.height - target_h) // 3, 0)  # bias crop towards faces
+    photo = photo.crop((left, top, left + target_w, top + target_h))
+
+    img.paste(photo, (0, 0))
+
+    # gradient overlays: darken the top (chrome legibility) and dissolve
+    # the bottom of the photo into the pitch background
+    overlay = Image.new("RGBA", (W, target_h), (0, 0, 0, 0))
+    od = ImageDraw.Draw(overlay)
+    for y in range(300):
+        od.line([(0, y), (W, y)], fill=(4, 21, 10, int(190 * (1 - y / 300))))
+    bottom = _hex(PITCH_TOP)
+    for y in range(420, target_h):
+        a = int(255 * ((y - 420) / (target_h - 420)) ** 1.2)
+        od.line([(0, y), (W, y)], fill=(*bottom, a))
+    img.paste(Image.alpha_composite(img.convert("RGBA").crop((0, 0, W, target_h)), overlay).convert("RGB"), (0, 0))
+
+    draw = ImageDraw.Draw(img)
+    badge = _logo_white(150)
+    if badge is not None:
+        img.paste(badge, ((W - badge.width) // 2, 56), badge)
+        draw = ImageDraw.Draw(img)
+    _kicker(draw, fmt)
+
+    headline = (facts.get("headline") or "Football update").upper()
+    band_top, band_bottom = 760, 1120
+    for size in (86, 74, 64, 56, 48):
+        fh = display(size)
+        lines = _wrap_px(draw, headline, fh, W - 2 * MARGIN)
+        line_h = int(size * 1.18)
+        if len(lines) * line_h <= (band_bottom - band_top):
+            break
+    lines = lines[:6]
+    y = band_top
+    draw.rectangle([MARGIN, y - 32, MARGIN + 110, y - 18], fill=GREEN)
+    for line in lines:
+        draw.text((MARGIN, y), line, font=fh, fill=WHITE)
+        y += line_h
+
+    f = meta_light(32)
+    y_meta = 1138
+    domains = facts.get("source_domains") or []
+    if domains:
+        _tracked(draw, (MARGIN, y_meta),
+                 "SOURCES: " + " · ".join(d.upper() for d in domains[:2]), f, META, 2)
+        y_meta += 44
+    if facts.get("photo_credit"):
+        _tracked(draw, (MARGIN, y_meta), facts["photo_credit"].upper()[:80], f, META, 2)
+
+    _footer(draw, facts.get("date_label", ""))
+    return img
+
+
+def _fixtures(fmt: str, facts: dict) -> Image.Image:
+    img, draw = _canvas()
+    _kicker(draw, fmt)
+    _competition(draw, facts.get("headline", "TODAY'S FIXTURES"))
+
+    rows = facts.get("fixture_rows", [])[:7]
+    n = max(len(rows), 1)
+    row_h = min(150, 620 // n)
+    total_h = row_h * n
+    y = 470 + (640 - total_h) // 2
+
+    fteam = display(min(58, row_h - 64))
+    ftime = meta(44)
+    for r in rows:
+        line = f"{r.get('home', '?')}  v  {r.get('away', '?')}".upper()
+        f = _fit_display(draw, line, W - 2 * MARGIN, fteam.size)
+        tw = draw.textlength(line, font=f)
+        draw.text(((W - tw) / 2, y), line, font=f, fill=WHITE)
+        when = (r.get("time") or "").upper()
+        if when:
+            tw2 = _tracked_width(draw, when, ftime, 4)
+            _tracked(draw, ((W - tw2) / 2, y + f.size + 14), when, ftime, META, 4)
+        y += row_h
+
+    _footer(draw, facts.get("date_label", ""))
+    return img
+
+
+# ── reels (animated score reveal) ───────────────────────────────────────
+
+RW, RH = 1080, 1920  # 9:16 reel canvas
+FPS = 24
+DURATION = 4.0
+
+
+def render_reel(post_id: int, fmt: str, facts: dict) -> Path | None:
+    """Animated MP4 for Reels: chrome fades in, team rows slide in from
+    the sides, the score counts up. Returns None if video deps are
+    unavailable (posting then falls back to the static image)."""
+    try:
+        import imageio.v2 as imageio
+    except ImportError:
+        log.info("imageio not installed — skipping reel render")
+        return None
+
+    base = _reel_background()
+    frames = int(DURATION * FPS)
+    path = config.MEDIA_DIR / f"post_{post_id}.mp4"
+    try:
+        writer = imageio.get_writer(
+            str(path), fps=FPS, codec="libx264", quality=7,
+            macro_block_size=None, pixelformat="yuv420p",
+        )
+        try:
+            import numpy as np
+            for i in range(frames):
+                frame = _reel_frame(base.copy(), i / (frames - 1), fmt, facts)
+                writer.append_data(np.asarray(frame))
+        finally:
+            writer.close()
+    except Exception as exc:  # never block posting on a failed reel
+        log.warning("reel render failed: %s", exc)
+        path.unlink(missing_ok=True)
+        return None
+    log.info("rendered reel -> %s", path.name)
+    return path
+
+
+def _ease_out(t: float) -> float:
+    return 1 - (1 - max(0.0, min(t, 1.0))) ** 3
+
+
+def _phase(t: float, start: float, end: float) -> float:
+    if t <= start:
+        return 0.0
+    if t >= end:
+        return 1.0
+    return (t - start) / (end - start)
+
+
+def _reel_background() -> Image.Image:
+    img = Image.new("RGB", (RW, RH), PITCH_BOTTOM)
+    draw = ImageDraw.Draw(img)
+    top, bottom = _hex(PITCH_TOP), _hex(PITCH_BOTTOM)
+    for y in range(RH):
+        t = y / RH
+        draw.line([(0, y), (RW, y)],
+                  fill=tuple(int(a + (b - a) * t) for a, b in zip(top, bottom)))
+    marks = Image.new("RGBA", (RW, RH), (0, 0, 0, 0))
+    md = ImageDraw.Draw(marks)
+    md.ellipse([RW - 460, -220, RW + 360, 600], outline=LINE, width=3)
+    md.ellipse([-300, RH - 500, 340, RH + 140], outline=LINE, width=3)
+    return Image.alpha_composite(img.convert("RGBA"), marks).convert("RGB")
+
+
+def _with_alpha(layer: Image.Image, alpha: float) -> Image.Image:
+    if alpha >= 1.0:
+        return layer
+    faded = layer.copy()
+    faded.putalpha(faded.getchannel("A").point(lambda v: int(v * alpha)))
+    return faded
+
+
+def _reel_frame(img: Image.Image, t: float, fmt: str, facts: dict) -> Image.Image:
+    rgba = img.convert("RGBA")
+    layer = Image.new("RGBA", (RW, RH), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(layer)
+
+    # chrome fade-in
+    a_chrome = _ease_out(_phase(t, 0.0, 0.18))
+    badge = _logo_white(190)
+    chrome = Image.new("RGBA", (RW, RH), (0, 0, 0, 0))
+    cd = ImageDraw.Draw(chrome)
+    if badge is not None:
+        chrome.paste(badge, ((RW - badge.width) // 2, 170), badge)
+    f = label(40)
+    text = fmt.upper()
+    tw = _tracked_width(cd, text, f, 8)
+    pad, dot_r = 42, 10
+    total = tw + pad * 2 + dot_r * 2 + 20
+    x0 = (RW - total) / 2
+    cd.rounded_rectangle([x0, 430, x0 + total, 522], radius=46, fill=GREEN)
+    cy = 476
+    cd.ellipse([x0 + pad - dot_r, cy - dot_r, x0 + pad + dot_r, cy + dot_r], fill=PITCH_BOTTOM)
+    _tracked(cd, (x0 + pad + dot_r * 2 + 20, 452), text, f, PITCH_BOTTOM, 8)
+    comp = (facts.get("competition") or "").upper()
+    if comp:
+        fc = meta(54)
+        cw = _tracked_width(cd, comp, fc, 10)
+        _tracked(cd, ((RW - cw) / 2, 580), comp, fc, META, 10)
+    rgba = Image.alpha_composite(rgba, _with_alpha(chrome, a_chrome))
+
+    # team rows slide in
+    home, away = facts.get("home", "?").upper(), facts.get("away", "?").upper()
+    hs, as_ = facts.get("home_score"), facts.get("away_score")
+    margin = 90
+    name_max = RW - 2 * margin - 240
+    size = 120
+    for name in (home, away):
+        f_try = _fit_display(draw, name, name_max, size)
+        size = min(size, f_try.size)
+    fname = display(size)
+    fscore = display(170)
+
+    slide = _ease_out(_phase(t, 0.22, 0.5))
+    rows = Image.new("RGBA", (RW, RH), (0, 0, 0, 0))
+    rd = ImageDraw.Draw(rows)
+    hx = int(-700 + (margin + 700) * slide)
+    ax = int((RW + 700) - (RW + 700 - margin) * slide)
+    rd.text((hx, 900), home, font=fname, fill=WHITE)
+    rd.text((ax, 1180), away, font=fname, fill=WHITE)
+    rd.line([(margin, 1130), (RW - margin, 1130)], fill=(255, 255, 255, int(36 * slide)), width=2)
+    rgba = Image.alpha_composite(rgba, _with_alpha(rows, max(slide, 0.01)))
+
+    # score count-up
+    if hs is not None:
+        reveal = _phase(t, 0.55, 0.8)
+        cur_h, cur_a = round(hs * reveal), round(as_ * reveal)
+        scores = Image.new("RGBA", (RW, RH), (0, 0, 0, 0))
+        sd = ImageDraw.Draw(scores)
+        for val, y in ((cur_h, 870), (cur_a, 1150)):
+            s = str(val)
+            sw = sd.textlength(s, font=fscore)
+            sd.text((RW - margin - sw, y), s, font=fscore, fill=GREEN_BRIGHT)
+        rgba = Image.alpha_composite(rgba, _with_alpha(scores, _ease_out(_phase(t, 0.5, 0.62))))
+
+    # status pill
+    a_pill = _ease_out(_phase(t, 0.8, 0.92))
+    if a_pill > 0:
+        status = "FULL-TIME" if fmt == "FINAL WHISTLE" else facts.get("status_label", "LIVE")
+        pill = Image.new("RGBA", (RW, RH), (0, 0, 0, 0))
+        pd_ = ImageDraw.Draw(pill)
+        fp = label(38)
+        tw = _tracked_width(pd_, status, fp, 6)
+        pad = 36
+        x0 = (RW - tw - pad * 2) / 2
+        pd_.rounded_rectangle([x0, 1430, x0 + tw + pad * 2, 1510], radius=16, outline=GREEN, width=4)
+        _tracked(pd_, (x0 + pad, 1448), status, fp, GREEN_BRIGHT, 6)
+        rgba = Image.alpha_composite(rgba, _with_alpha(pill, a_pill))
+
+    # footer
+    footer = Image.new("RGBA", (RW, RH), (0, 0, 0, 0))
+    fd = ImageDraw.Draw(footer)
+    fy = RH - 150
+    fd.line([(margin, fy), (RW - margin, fy)], fill=(255, 255, 255, 38), width=2)
+    _tracked(fd, (margin, fy + 30), config.BRAND_HANDLE.upper(), meta(52), WHITE, 2)
+    rgba = Image.alpha_composite(rgba, _with_alpha(footer, a_chrome))
+
+    return rgba.convert("RGB")
+
+
 def _table(fmt: str, facts: dict) -> Image.Image:
     img, draw = _canvas()
-    _badge(draw, fmt)
-    f = regular(40)
-    draw.text((60, 240), facts.get("headline", "TABLE").upper()[:40], font=f, fill=OFFWHITE)
-    _whistle_stripe(draw)
+    _kicker(draw, fmt)
+    _competition(draw, facts.get("headline", "TABLE"))
 
     rows = facts.get("table_rows", [])[:10]
-    fhead = bold(40)
-    frow = regular(42)
-    y = 430
-    draw.text((70, y), "#", font=fhead, fill=GREEN_DARK)
-    draw.text((150, y), "TEAM", font=fhead, fill=GREEN_DARK)
-    draw.text((760, y), "P", font=fhead, fill=GREEN_DARK)
-    draw.text((860, y), "GD", font=fhead, fill=GREEN_DARK)
-    draw.text((970, y), "PTS", font=fhead, fill=GREEN_DARK)
-    y += 70
-    for r in rows:
-        if r["position"] % 2 == 0:
-            draw.rectangle([50, y - 8, W - 50, y + 54], fill="#E4EFE7")
-        draw.text((70, y), str(r["position"]), font=frow, fill="#1A1A1A")
-        draw.text((150, y), str(r["team"])[:24], font=frow, fill="#1A1A1A")
-        draw.text((760, y), str(r["played"]), font=frow, fill="#1A1A1A")
-        draw.text((860, y), f'{r["gd"]:+d}', font=frow, fill="#1A1A1A")
-        draw.text((970, y), str(r["points"]), font=bold(44), fill=GREEN_DARK)
-        y += 74
+    card_x0, card_x1 = 60, W - 60
+    card_y0 = 460
+    row_h = 64
+    card_y1 = card_y0 + 70 + row_h * len(rows) + 26
+    draw.rounded_rectangle([card_x0, card_y0, card_x1, card_y1], radius=26, fill=CARD)
+
+    fhead = label(26)
+    frow = meta(46)
+    fpts = label(34)
+    cols = {"pos": 100, "team": 160, "p": 760, "gd": 860, "pts": 985}
+
+    hy = card_y0 + 26
+    for key, txt in (("pos", "#"), ("team", "TEAM"), ("p", "P"), ("gd", "GD"), ("pts", "PTS")):
+        draw.text((cols[key], hy), txt, font=fhead, fill="#5E7A52")
+
+    y = card_y0 + 70
+    for i, r in enumerate(rows):
+        if i % 2 == 1:
+            draw.rectangle([card_x0 + 14, y - 4, card_x1 - 14, y + row_h - 12], fill="#E8F2DF")
+        if r["position"] <= 4:  # CL places marker
+            draw.rectangle([card_x0 + 14, y - 4, card_x0 + 22, y + row_h - 12], fill=GREEN)
+        draw.text((cols["pos"], y), str(r["position"]), font=frow, fill=INK)
+        draw.text((cols["team"], y), str(r["team"])[:24].upper(), font=frow, fill=INK)
+        draw.text((cols["p"], y), str(r["played"]), font=frow, fill=INK)
+        draw.text((cols["gd"], y), f'{r["gd"]:+d}', font=frow, fill=INK)
+        draw.text((cols["pts"], y + 6), str(r["points"]), font=fpts, fill="#3E7A1E")
+        y += row_h
 
     _footer(draw, facts.get("date_label", ""))
     return img
