@@ -684,7 +684,7 @@ def render_news_reel(post_id: int, fmt: str, facts: dict) -> Path | None:
     td.line([(margin, fy), (RW - margin, fy)], fill=(255, 255, 255, 38), width=2)
     _tracked(td, (margin, fy + 26), config.BRAND_HANDLE.upper(), meta(50), WHITE, 2)
 
-    fps, dur = 20, 6.0
+    fps, dur = 24, 6.0  # Instagram requires >=23fps for Reels
     frames = int(fps * dur)
     path = config.MEDIA_DIR / f"post_{post_id}.mp4"
     try:

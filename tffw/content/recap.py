@@ -14,7 +14,7 @@ from . import voice
 
 log = get_logger("recap")
 
-FPS = 20
+FPS = 24  # Instagram requires >=23fps for Reels
 FADE = 0.45  # seconds of crossfade between slides
 
 
