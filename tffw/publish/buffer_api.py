@@ -37,15 +37,32 @@ def configured() -> bool:
     return bool(config.BUFFER_ACCESS_TOKEN and config.BUFFER_CHANNEL_ID)
 
 
+def split_caption(caption: str) -> tuple[str, str | None]:
+    """Move the hashtag line to a first comment (cleaner captions).
+    Returns (caption_without_hashtags, hashtag_line_or_None)."""
+    if "\n.\n" not in caption:
+        return caption, None
+    body, tail = caption.split("\n.\n", 1)
+    tail_lines = tail.splitlines()
+    hashtags = next((l for l in tail_lines if l.startswith("#")), None)
+    rest = [l for l in tail_lines if l != hashtags]
+    cleaned = body + ("\n.\n" + "\n".join(rest) if rest else "")
+    return cleaned, hashtags
+
+
 def publish(caption: str, image_url: str, alt_text: str, video_url: str | None = None) -> str | None:
     """Queue the post on the Instagram channel (image post, or reel when a
-    video URL is provided). Returns the Buffer post id or None on failure."""
+    video URL is provided). Hashtags go in the first comment. Returns the
+    Buffer post id or None on failure."""
+    caption, first_comment = split_caption(caption)
     if video_url:
         assets = [{"video": {"url": video_url, "thumbnailUrl": image_url}}]
         ig_meta = {"type": "reel", "shouldShareToFeed": True}
     else:
         assets = [{"image": {"url": image_url, "metadata": {"altText": alt_text}}}]
         ig_meta = {"type": "post", "shouldShareToFeed": True}
+    if first_comment:
+        ig_meta["firstComment"] = first_comment
     variables = {
         "input": {
             "channelId": config.BUFFER_CHANNEL_ID,
@@ -84,4 +101,34 @@ def publish(caption: str, image_url: str, alt_text: str, video_url: str | None =
     message = result.get("message") or str(payload.get("errors", payload))[:300]
     db.log_error("buffer", f"createPost failed: {message}")
     log.error("buffer createPost failed: %s", message)
+    return None
+
+
+def publish_story(image_url: str) -> str | None:
+    """Post a 9:16 card to Instagram Stories."""
+    variables = {
+        "input": {
+            "channelId": config.BUFFER_CHANNEL_ID,
+            "schedulingType": "automatic",
+            "mode": "addToQueue",
+            "text": "",
+            "assets": [{"image": {"url": image_url, "metadata": {"altText": "story card"}}}],
+            "metadata": {"instagram": {"type": "story", "shouldShareToFeed": False}},
+            "source": "tffw-agent",
+        }
+    }
+    resp = request(
+        "buffer", "POST", GRAPHQL_URL,
+        headers={
+            "Authorization": f"Bearer {config.BUFFER_ACCESS_TOKEN}",
+            "Content-Type": "application/json",
+        },
+        json_body={"query": CREATE_POST, "variables": variables},
+    )
+    if resp is None:
+        return None
+    result = (resp.json().get("data") or {}).get("createPost") or {}
+    if result.get("__typename") == "PostActionSuccess":
+        return result["post"]["id"]
+    db.log_error("buffer", f"story failed: {result.get('message', '?')}")
     return None

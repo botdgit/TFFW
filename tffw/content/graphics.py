@@ -463,6 +463,66 @@ def _fixtures(fmt: str, facts: dict) -> Image.Image:
     return img
 
 
+# ── stories (9:16 static cards) ─────────────────────────────────────────
+
+def render_story(post_id: int, fmt: str, facts: dict) -> Path | None:
+    """1080x1920 story card. Match formats reuse the reel composition's
+    final frame; headline formats get a centered story layout."""
+    try:
+        if facts.get("home"):
+            img = _reel_frame(_reel_background(), 1.0, fmt, facts)
+        else:
+            img = _story_headline(fmt, facts)
+        path = config.MEDIA_DIR / f"story_{post_id}.png"
+        img.save(path, "PNG", optimize=True)
+        log.info("rendered story -> %s", path.name)
+        return path
+    except Exception as exc:
+        log.warning("story render failed: %s", exc)
+        return None
+
+
+def _story_headline(fmt: str, facts: dict) -> Image.Image:
+    img = _reel_background()
+    draw = ImageDraw.Draw(img)
+    badge = _logo_white(190)
+    if badge is not None:
+        img.paste(badge, ((RW - badge.width) // 2, 190), badge)
+        draw = ImageDraw.Draw(img)
+
+    f = label(40)
+    text = fmt.upper()
+    tw = _tracked_width(draw, text, f, 8)
+    pad, dot_r = 42, 10
+    total = tw + pad * 2 + dot_r * 2 + 20
+    x0 = (RW - total) / 2
+    draw.rounded_rectangle([x0, 460, x0 + total, 552], radius=46, fill=GREEN)
+    cy = 506
+    draw.ellipse([x0 + pad - dot_r, cy - dot_r, x0 + pad + dot_r, cy + dot_r], fill=PITCH_BOTTOM)
+    _tracked(draw, (x0 + pad + dot_r * 2 + 20, 482), text, f, PITCH_BOTTOM, 8)
+
+    headline = (facts.get("headline") or "Football update").upper()
+    margin = 90
+    for size in (104, 90, 78, 66, 56):
+        fh = display(size)
+        lines = _wrap_px(draw, headline, fh, RW - 2 * margin)
+        line_h = int(size * 1.18)
+        if len(lines) * line_h <= 760:
+            break
+    lines = lines[:8]
+    block_h = len(lines) * line_h
+    y = 700 + (760 - block_h) // 2
+    draw.rectangle([margin, y - 36, margin + 120, y - 20], fill=GREEN)
+    for line in lines:
+        draw.text((margin, y), line, font=fh, fill=WHITE)
+        y += line_h
+
+    fy = RH - 150
+    draw.line([(margin, fy), (RW - margin, fy)], fill=(255, 255, 255, 38), width=2)
+    _tracked(draw, (margin, fy + 30), config.BRAND_HANDLE.upper(), meta(52), WHITE, 2)
+    return img
+
+
 # ── reels (animated score reveal) ───────────────────────────────────────
 
 RW, RH = 1080, 1920  # 9:16 reel canvas

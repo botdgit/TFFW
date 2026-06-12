@@ -42,6 +42,14 @@ while true; do
     echo "TFFW: $n queued post(s) due — publish them via the Buffer connector now (run scripts/session_publish_queue.py for details)"
   fi
 
+  # weekly fixtures carousel: regenerate every Friday (once)
+  if [ "$(date -u +%u)" = "5" ] && [ ! -f "/tmp/tffw_carousel_$(date -u +%F)" ]; then
+    if python scripts/wc_week_carousel.py >/dev/null 2>&1; then
+      touch "/tmp/tffw_carousel_$(date -u +%F)"
+      echo "TFFW: weekly World Cup fixtures carousel regenerated — publish it via the Buffer connector (slides wc_week_0..N in output/media, push first)"
+    fi
+  fi
+
   # periodic heartbeat so health checks happen even when nothing is due
   if [ $((i % 180)) -eq 1 ]; then
     echo "TFFW heartbeat: cycle $i — check GitHub Actions runs for agent-live/news/digest are green"

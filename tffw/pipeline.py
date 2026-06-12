@@ -63,6 +63,10 @@ def _queue(fmt: str, headline: str, facts: dict, confidence: float, sources: lis
         except Exception as exc:
             db.log_error("reel", f"post {post_id}: {exc}")
 
+    # match moments also get a 9:16 story card, posted to Stories alongside
+    if fmt in ("LIVE WHISTLE", "FINAL WHISTLE") and facts.get("home"):
+        graphics.render_story(post_id, fmt, facts)
+
     log.info("QUEUED #%d [%s] %s (conf %.2f)", post_id, fmt, headline, confidence)
 
 
@@ -318,6 +322,11 @@ def _publish_one(post: dict) -> None:
 
     external_id = backend.publish(post["caption"], image_url, post["alt_text"], video_url=video_url) \
         if config.PUBLISHER == "buffer" else backend.publish(post["caption"], image_url, post["alt_text"])
+
+    # companion story card for match moments
+    story_file = config.MEDIA_DIR / f"story_{post['id']}.png"
+    if external_id and config.PUBLISHER == "buffer" and story_file.exists():
+        backend.publish_story(config.media_public_url(story_file.name))
     if external_id:
         db.update_post(
             post["id"], status="published", published_at=db.now_iso(), external_id=str(external_id)

@@ -62,6 +62,8 @@ def main() -> int:
         if (config.MEDIA_DIR / f"post_{p['id']}.mp4").exists():
             item["video_url"] = f"{base}/post_{p['id']}.mp4"
             item["instagram_type"] = "reel"
+        if (config.MEDIA_DIR / f"story_{p['id']}.png").exists():
+            item["story_url"] = f"{base}/story_{p['id']}.png"
         due.append(item)
     print(json.dumps({"due": due}, indent=2))
     return 0
