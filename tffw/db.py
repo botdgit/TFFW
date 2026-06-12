@@ -200,19 +200,48 @@ def enqueue_post(
             return None
 
 
+# ── published ledger ────────────────────────────────────────────────────
+# One tiny marker file per published post. The SQLite DB is a binary file
+# and can lose a concurrent-push race between the cron runners (a stale
+# checkout rolling a 'published' row back to 'queued'); plain files merge
+# trivially in git, so this ledger is the authoritative duplicate guard.
+
+LEDGER_DIR = config.DATA_DIR / "published"
+
+
+def ledger_mark(post_id: int, external_id: str) -> None:
+    LEDGER_DIR.mkdir(parents=True, exist_ok=True)
+    (LEDGER_DIR / str(post_id)).write_text(f"{external_id}\n{now_iso()}\n")
+
+
+def ledger_get(post_id: int) -> str | None:
+    path = LEDGER_DIR / str(post_id)
+    if path.exists():
+        return path.read_text().splitlines()[0] if path.read_text() else "published"
+    return None
+
+
 def due_posts(limit: int) -> list[dict]:
     """Due queue items — time-sensitive formats (breaking news, live match
-    moments) jump ahead of evergreen content (tables, fixture digests)."""
+    moments) jump ahead of evergreen content (tables, fixture digests).
+    Posts present in the published ledger are healed and never returned."""
     with connect() as conn:
         rows = conn.execute(
             "SELECT * FROM posts WHERE status = 'queued' AND scheduled_for <= ? "
             "ORDER BY CASE WHEN format IN "
             "('BREAKING','TRANSFER WHISTLE','VAR CHECK','LIVE WHISTLE','FINAL WHISTLE') "
-            "THEN 0 ELSE 1 END, confidence DESC, scheduled_for ASC LIMIT ?",
-            (now_iso(), limit),
+            "THEN 0 ELSE 1 END, confidence DESC, scheduled_for ASC",
+            (now_iso(),),
         ).fetchall()
     out = []
     for r in rows:
+        external = ledger_get(r["id"])
+        if external is not None:  # DB row was rolled back by a sync race — heal it
+            update_post(r["id"], status="published", external_id=external,
+                        published_at=now_iso())
+            continue
+        if len(out) >= limit:
+            continue
         d = dict(r)
         d["facts"] = json.loads(d["facts"])
         d["sources"] = json.loads(d["sources"])

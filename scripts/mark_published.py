@@ -23,6 +23,8 @@ def main() -> int:
         published_at=db.now_iso(),
         external_id=external_id,
     )
+    if not failed:
+        db.ledger_mark(post_id, external_id)
     dashboard.build()
     print(f"post {post_id} -> {'failed' if failed else 'published'} ({external_id})")
     return 0

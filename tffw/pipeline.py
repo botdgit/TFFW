@@ -331,6 +331,7 @@ def _publish_one(post: dict) -> None:
         db.update_post(
             post["id"], status="published", published_at=db.now_iso(), external_id=str(external_id)
         )
+        db.ledger_mark(post["id"], str(external_id))
         log.info("PUBLISHED #%d via %s -> %s", post["id"], config.PUBLISHER, external_id)
     else:
         db.update_post(post["id"], status="failed")
