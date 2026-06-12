@@ -178,7 +178,11 @@ def run_news() -> None:
         if existing and existing["status"] in ("posted", "skipped_irrelevant"):
             continue
 
-        if not verification.is_relevant(c["headline"]):
+        # check the summary too — sport giveaways ("Grand Prix", "McLaren")
+        # often only appear there
+        if not verification.is_relevant(
+            c["headline"] + " " + c["items"][0].get("summary", "")
+        ):
             db.upsert_claim(c["claim_key"], c["headline"], c["sources"],
                             c["confidence"], "skipped_irrelevant")
             continue
