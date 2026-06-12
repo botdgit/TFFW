@@ -1,4 +1,4 @@
-# LIVE WHISTLE loop — match monitoring every 10 minutes.
+# LIVE WHISTLE loop — match monitoring every 10 minutes (kick-offs, goals, FT).
 # Scheduled workflows run on the repository's default branch.
 name: agent-live
 

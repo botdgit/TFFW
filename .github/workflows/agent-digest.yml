@@ -1,4 +1,4 @@
-# Daily digest — league table + fixtures preview, every morning 07:00 UTC.
+# Daily digest — league table and fixtures preview, every morning 07:00 UTC.
 name: agent-digest
 
 on:
