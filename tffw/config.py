@@ -55,7 +55,7 @@ THESPORTSDB_BASE = "https://www.thesportsdb.com/api/v1/json"
 # ── News ────────────────────────────────────────────────────────────────
 DEFAULT_FEEDS = [
     "https://feeds.bbci.co.uk/sport/football/rss.xml",
-    "https://www.skysports.com/rss/12040",
+    "https://www.skysports.com/rss/11095",  # Sky Sports *football* feed
     "https://www.theguardian.com/football/rss",
     "https://www.espn.com/espn/rss/soccer/news",
 ]
@@ -64,10 +64,14 @@ RSS_FEEDS = [
     for f in os.environ.get("RSS_FEEDS", ",".join(DEFAULT_FEEDS)).split(",")
     if f.strip()
 ]
-# Two distinct outlets must report a story before it is considered verified.
-NEWS_MIN_SOURCES = _int("NEWS_MIN_SOURCES", 2)
+# Outlets required before a story is posted. 1 = any single tier-1 outlet
+# (BBC/Sky/Guardian/ESPN) is trusted; 2 restores strict cross-verification.
+NEWS_MIN_SOURCES = _int("NEWS_MIN_SOURCES", 1)
 NEWS_SIMILARITY = _float("NEWS_SIMILARITY", 0.45)
 NEWS_WINDOW_HOURS = _int("NEWS_WINDOW_HOURS", 18)
+# A story must be fresher than this to be posted (clusters keep building
+# in the wider window above, but stale news never goes out).
+NEWS_MAX_AGE_HOURS = _int("NEWS_MAX_AGE_HOURS", 4)
 
 # ── Captions / Claude ───────────────────────────────────────────────────
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
@@ -82,9 +86,9 @@ IG_ACCESS_TOKEN = os.environ.get("IG_ACCESS_TOKEN", "")
 MEDIA_BASE_URL = os.environ.get("MEDIA_BASE_URL", "")
 
 REELS_ENABLED = _bool("REELS_ENABLED", True)
-MAX_POSTS_PER_RUN = _int("MAX_POSTS_PER_RUN", 3)
-MIN_MINUTES_BETWEEN_POSTS = _int("MIN_MINUTES_BETWEEN_POSTS", 20)
-MAX_POSTS_PER_DAY = _int("MAX_POSTS_PER_DAY", 12)
+MAX_POSTS_PER_RUN = _int("MAX_POSTS_PER_RUN", 5)
+MIN_MINUTES_BETWEEN_POSTS = _int("MIN_MINUTES_BETWEEN_POSTS", 5)
+MAX_POSTS_PER_DAY = _int("MAX_POSTS_PER_DAY", 40)
 
 # ── Brand ───────────────────────────────────────────────────────────────
 BRAND_HANDLE = os.environ.get("BRAND_HANDLE", "@thefootballfinalwhistle")

@@ -169,7 +169,18 @@ def run_news() -> None:
 
     for c in clusters:
         existing = db.get_claim(c["claim_key"])
-        if existing and existing["status"] == "posted":
+        if existing and existing["status"] in ("posted", "skipped_irrelevant"):
+            continue
+
+        if not verification.is_relevant(c["headline"]):
+            db.upsert_claim(c["claim_key"], c["headline"], c["sources"],
+                            c["confidence"], "skipped_irrelevant")
+            continue
+
+        newest = max(i["published"] for i in c["items"])
+        if not _is_recent(newest, hours=config.NEWS_MAX_AGE_HOURS):
+            db.upsert_claim(c["claim_key"], c["headline"], c["sources"],
+                            c["confidence"], "expired")
             continue
 
         verified = c["confidence"] >= config.MIN_CONFIDENCE

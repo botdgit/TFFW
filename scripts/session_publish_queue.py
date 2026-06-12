@@ -37,8 +37,10 @@ def main() -> int:
             print(json.dumps({"due": [], "reason": f"spacing gate ({gap})"}))
             return 0
 
+    # one post per call: the session loop runs every couple of minutes, so
+    # this paces a busy queue smoothly instead of bursting
     due = []
-    for p in db.due_posts(config.MAX_POSTS_PER_RUN):
+    for p in db.due_posts(1):
         filename = (p["image_path"] or "").split("/")[-1]
         base = f"https://raw.githubusercontent.com/botdgit/TFFW/{BRANCH}/output/media"
         item = {

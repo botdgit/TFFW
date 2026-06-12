@@ -72,7 +72,12 @@ def cluster_news(items: list[dict]) -> list[dict]:
         lead = c["items"][0]
         key_tokens = "|".join(sorted(tokenize(lead["title"])))
         claim_key = "story:" + hashlib.sha256(key_tokens.encode()).hexdigest()[:20]
-        confidence = 1.0 if len(domains) >= config.NEWS_MIN_SOURCES else 0.5
+        if len(domains) >= 2:
+            confidence = 1.0          # independently corroborated
+        elif config.NEWS_MIN_SOURCES <= 1:
+            confidence = 0.85         # single trusted tier-1 outlet
+        else:
+            confidence = 0.5          # below the configured source bar
         out.append(
             {
                 "claim_key": claim_key,
@@ -108,6 +113,32 @@ def score_final_result(match: dict) -> tuple[float, list[dict]]:
         sources.append({"domain": "thesportsdb.com", "title": "RESULT CONFLICT"})
         return 0.4, sources
     return 0.85, sources
+
+
+# With single-source posting enabled, this filter is the spam/relevance
+# gate: it drops interactive/format junk and the other sports that leak
+# into the football feeds. Pure blocklist — football stories pass by default.
+IRRELEVANT_TERMS = (
+    # feed junk / interactive formats
+    "quiz", "podcast", "listen:", "watch:", "gossip", "have your say",
+    "predict the score", "fans react", "fan vote", "you are ", "vote for",
+    "how to follow", "tv guide", "betting", "odds", "crossword",
+    "weekly round-up", "in pictures", "photo gallery", "fantasy tips",
+    # other sports that appear in mixed sport feeds
+    "f1", "formula 1", "formula one", "grand prix", "qualifying lap",
+    "cricket", "rugby", "tennis", "wimbledon", "queen's club", "atp", "wta",
+    "golf", "ryder cup", "boxing", "ufc", "mma", "nfl", "nba", "mlb", "nhl",
+    "horse racing", "races at", "st james's palace", "ascot", "darts",
+    "dart ", "snooker", "cycling", "tour de france", "athletics", "swimming",
+    "netball", "hockey", "grand prix", " gp:", "first practice", "mclaren",
+    "mercedes", "queen's", "t20", "icc ", "test match", "the ashes",
+    "how can you follow", "day-by-day guide",
+)
+
+
+def is_relevant(headline: str) -> bool:
+    h = " " + headline.lower() + " "
+    return not any(term in h for term in IRRELEVANT_TERMS)
 
 
 def classify_news(headline: str) -> str:

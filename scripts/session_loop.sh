@@ -39,9 +39,9 @@ while true; do
   fi
 
   # periodic heartbeat so health checks happen even when nothing is due
-  if [ $((i % 36)) -eq 1 ]; then
+  if [ $((i % 180)) -eq 1 ]; then
     echo "TFFW heartbeat: cycle $i — check GitHub Actions runs for agent-live/news/digest are green"
   fi
 
-  sleep 600
+  sleep 120
 done
