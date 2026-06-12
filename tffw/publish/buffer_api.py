@@ -15,7 +15,7 @@ from ..logger import get_logger
 
 log = get_logger("buffer")
 
-GRAPHQL_URL = os.environ.get("BUFFER_GRAPHQL_URL", "https://graph.buffer.com/")
+GRAPHQL_URL = os.environ.get("BUFFER_GRAPHQL_URL", "https://api.buffer.com/graphql")
 
 CREATE_POST = """
 mutation TffwCreatePost($input: CreatePostInput!) {
@@ -54,20 +54,18 @@ def publish(caption: str, image_url: str, alt_text: str, video_url: str | None =
     """Queue the post on the Instagram channel (image post, or reel when a
     video URL is provided). Hashtags go in the first comment. Returns the
     Buffer post id or None on failure."""
-    caption, first_comment = split_caption(caption)
+    # firstComment needs a paid Buffer plan — keep hashtags in the caption
     if video_url:
         assets = [{"video": {"url": video_url, "thumbnailUrl": image_url}}]
         ig_meta = {"type": "reel", "shouldShareToFeed": True}
     else:
         assets = [{"image": {"url": image_url, "metadata": {"altText": alt_text}}}]
         ig_meta = {"type": "post", "shouldShareToFeed": True}
-    if first_comment:
-        ig_meta["firstComment"] = first_comment
     variables = {
         "input": {
             "channelId": config.BUFFER_CHANNEL_ID,
             "schedulingType": "automatic",
-            "mode": "addToQueue",
+            "mode": "shareNow",
             "text": caption,
             "assets": assets,
             "metadata": {"instagram": ig_meta},
@@ -110,7 +108,7 @@ def publish_story(image_url: str) -> str | None:
         "input": {
             "channelId": config.BUFFER_CHANNEL_ID,
             "schedulingType": "automatic",
-            "mode": "addToQueue",
+            "mode": "shareNow",
             "text": "",
             "assets": [{"image": {"url": image_url, "metadata": {"altText": "story card"}}}],
             "metadata": {"instagram": {"type": "story", "shouldShareToFeed": False}},

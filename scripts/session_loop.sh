@@ -39,10 +39,13 @@ while true; do
     }
   fi
 
-  n=$(python scripts/session_publish_queue.py 2>/dev/null \
-      | python -c "import json,sys; print(len(json.load(sys.stdin).get('due',[])))" 2>/dev/null || echo 0)
-  if [ "${n:-0}" -gt 0 ] && [ ! -f /tmp/tffw_connector_blocked ]; then
-    echo "TFFW: $n queued post(s) due — publish them via the Buffer connector now (run scripts/session_publish_queue.py for details)"
+  # publish autonomously via the Buffer token (.env); media is already pushed
+  python -m tffw.main publish >/dev/null 2>&1 || echo "TFFW ERROR: publish crashed (cycle $i)"
+  git add data output dashboard >/dev/null 2>&1
+  if ! git diff --cached --quiet; then
+    git -c user.name="Claude" -c user.email="noreply@anthropic.com" \
+      commit -q -m "agent: session publish $(date -u +%FT%TZ)"
+    git push >/dev/null 2>&1 || { git fetch origin >/dev/null 2>&1 && git reset --hard "origin/$BRANCH" >/dev/null 2>&1; }
   fi
 
   # weekly fixtures carousel: regenerate every Friday (once)
