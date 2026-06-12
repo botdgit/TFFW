@@ -154,7 +154,8 @@ def classify_news(headline: str) -> str:
     transfer_kw = (
         "transfer", "sign", "signs", "signing", "deal", "fee", "medical",
         "loan", "bid", "agree", "agreed", "contract", "release clause",
-        "move to", "joins", "join ", "offer", "swoop", "exit", "departure",
+        "move to", "joins", "join ", "offer for", "offer to sign", "bid for",
+        "swoop", "exit", "departure",
         "set to leave", "wants out", "price tag",
     )
     if any(k in h for k in transfer_kw):
