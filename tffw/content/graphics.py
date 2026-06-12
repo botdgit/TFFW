@@ -399,37 +399,31 @@ def _headline_card(fmt: str, facts: dict) -> Image.Image:
 
 
 def _photo_card(fmt: str, facts: dict) -> Image.Image:
-    """News card with a licensed Commons photo: image fills the upper
-    two-thirds, blends into the pitch gradient, headline below, license
-    attribution rendered on-card (license requirement)."""
-    img, _ = _canvas()
+    """News card with a licensed Commons photo as the FULL background:
+    image fills the entire canvas, brand-green gradient overlays keep the
+    chrome and headline legible. Credits go in the caption."""
     photo_file = config.ROOT / facts["photo_path"]
     try:
         photo = Image.open(photo_file).convert("RGB")
     except Exception:  # corrupt file, oversized image, missing path, ...
         return _headline_card(fmt, facts)
 
-    # cover-crop to 1080 x 720
-    target_w, target_h = W, 720
-    scale = max(target_w / photo.width, target_h / photo.height)
-    photo = photo.resize((int(photo.width * scale) + 1, int(photo.height * scale) + 1), Image.LANCZOS)
-    left = (photo.width - target_w) // 2
-    top = max((photo.height - target_h) // 3, 0)  # bias crop towards faces
-    photo = photo.crop((left, top, left + target_w, top + target_h))
+    # full-bleed cover crop, biased towards faces (keep the top of frame)
+    img = _cover(photo, W, H, top_bias=0.08)
 
-    img.paste(photo, (0, 0))
+    # subtle brand tint to unify the feed, then top + bottom gradients
+    tint = Image.new("RGB", (W, H), _hex(PITCH_BOTTOM))
+    img = Image.blend(img, tint, 0.22)
 
-    # gradient overlays: darken the top (chrome legibility) and dissolve
-    # the bottom of the photo into the pitch background
-    overlay = Image.new("RGBA", (W, target_h), (0, 0, 0, 0))
+    overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     od = ImageDraw.Draw(overlay)
-    for y in range(300):
-        od.line([(0, y), (W, y)], fill=(4, 21, 10, int(190 * (1 - y / 300))))
-    bottom = _hex(PITCH_TOP)
-    for y in range(400, target_h):
-        a = int(255 * ((y - 400) / (target_h - 400)) ** 1.1)
-        od.line([(0, y), (W, y)], fill=(*bottom, a))
-    img.paste(Image.alpha_composite(img.convert("RGBA").crop((0, 0, W, target_h)), overlay).convert("RGB"), (0, 0))
+    dark = _hex(PITCH_BOTTOM)
+    for y in range(0, 420):
+        od.line([(0, y), (W, y)], fill=(*dark, int(215 * (1 - y / 420))))
+    for y in range(620, H):
+        a = int(235 * ((y - 620) / (H - 620)) ** 1.4)
+        od.line([(0, y), (W, y)], fill=(*dark, a))
+    img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
 
     draw = ImageDraw.Draw(img)
     badge = _logo_white(150)
@@ -438,19 +432,18 @@ def _photo_card(fmt: str, facts: dict) -> Image.Image:
         draw = ImageDraw.Draw(img)
     _kicker(draw, fmt)
 
-    # headline sits fully below the photo, on the solid gradient — never
-    # over the photo's subject. Sources/credits go in the caption instead.
+    # headline over the lower third, where the gradient is strongest
     headline = (facts.get("headline") or "Football update").upper()
-    band_top, band_bottom = 790, 1180
-    for size in (86, 74, 64, 56, 48):
+    band_top, band_bottom = 840, 1190
+    for size in (84, 72, 62, 54, 46):
         fh = display(size)
         lines = _wrap_px(draw, headline, fh, W - 2 * MARGIN)
         line_h = int(size * 1.18)
         if len(lines) * line_h <= (band_bottom - band_top):
             break
-    lines = lines[:6]
+    lines = lines[:5]
     block_h = len(lines) * line_h
-    y = band_top + (band_bottom - band_top - block_h) // 2
+    y = band_bottom - block_h
     draw.rectangle([MARGIN, y - 32, MARGIN + 110, y - 18], fill=GREEN)
     for line in lines:
         draw.text((MARGIN, y), line, font=fh, fill=WHITE)

@@ -72,19 +72,19 @@ def _queue(fmt: str, headline: str, facts: dict, confidence: float, sources: lis
 
 
 def _attach_photo(facts: dict, headline: str, claim_key: str) -> dict:
-    """Best-effort licensed photo for a news story (never blocks posting)."""
+    """Best-effort licensed photo for a news story (never blocks posting).
+    Tries several subject queries: full name run, then individual names."""
     try:
-        entity = commons.entity_from_headline(headline)
-        if not entity:
-            return facts
-        photo = commons.find_photo(entity)
-        if not photo:
-            return facts
-        rel = commons.download(photo, f"src_{claim_key.split(':')[-1]}.jpg")
-        if not rel:
-            return facts
-        credit = f"PHOTO: {photo['artist']} / WIKIMEDIA COMMONS ({photo['license']})"
-        return {**facts, "photo_path": rel, "photo_credit": credit}
+        for query in commons.entity_queries(headline):
+            photo = commons.find_photo(query)
+            if not photo:
+                continue
+            rel = commons.download(photo, f"src_{claim_key.split(':')[-1]}.jpg")
+            if not rel:
+                continue
+            credit = f"PHOTO: {photo['artist']} / WIKIMEDIA COMMONS ({photo['license']})"
+            return {**facts, "photo_path": rel, "photo_credit": credit}
+        return facts
     except Exception as exc:
         db.log_error("commons", f"attach_photo: {exc}")
         return facts

@@ -28,11 +28,12 @@ STOPWORDS = {
 }
 
 
-def entity_from_headline(headline: str) -> str | None:
-    """Pull the most likely subject (player/club) from a headline: the
-    longest run of capitalised words, ignoring the sentence-initial word
-    unless it is part of a longer run."""
+def entity_queries(headline: str) -> list[str]:
+    """Candidate Commons queries for a headline's subject, best first:
+    the full capitalised run, then its individual names (surnames find
+    player photos that 'Scotland's McTominay' never would)."""
     words = re.findall(r"[A-Za-zÀ-ÿ'.-]+", headline)
+    words = [re.sub(r"[''']s$", "", w) for w in words]  # Scotland's -> Scotland
     runs, current = [], []
     for i, w in enumerate(words):
         if w[0].isupper() and w.lower() not in STOPWORDS:
@@ -49,11 +50,23 @@ def entity_from_headline(headline: str) -> str | None:
         toks = [w for i, w in run if not (i == 0 and len(run) == 1)]
         if toks:
             candidates.append(" ".join(toks))
-    if not candidates:
-        return None
     candidates.sort(key=lambda c: (-len(c.split()), -len(c)))
-    best = candidates[0]
-    return best if len(best) > 3 else None
+
+    queries: list[str] = []
+    for c in candidates:
+        if len(c) > 3 and c not in queries:
+            queries.append(c)
+        # also try each individual name word (longest first → surnames)
+        for tok in sorted(c.split(), key=len, reverse=True):
+            if len(tok) > 4 and tok not in queries:
+                queries.append(tok)
+    return queries[:4]
+
+
+def entity_from_headline(headline: str) -> str | None:
+    """Back-compat single-query helper."""
+    queries = entity_queries(headline)
+    return queries[0] if queries else None
 
 
 def find_photo(query: str) -> dict | None:
