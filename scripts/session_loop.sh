@@ -31,7 +31,7 @@ while true; do
 
   git add data output dashboard >/dev/null 2>&1
   if ! git diff --cached --quiet; then
-    git -c user.name="tffw-agent" -c user.email="tffw-agent@users.noreply.github.com" \
+    git -c user.name="Claude" -c user.email="noreply@anthropic.com" \
       commit -q -m "agent: session run $(date -u +%FT%TZ)"
     git push >/dev/null 2>&1 || {
       git fetch origin >/dev/null 2>&1 && git reset --hard "origin/$BRANCH" >/dev/null 2>&1

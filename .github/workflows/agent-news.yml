@@ -40,8 +40,8 @@ jobs:
 
       - name: Commit state, media and dashboard
         run: |
-          git config user.name "tffw-agent"
-          git config user.email "tffw-agent@users.noreply.github.com"
+          git config user.name "Claude"
+          git config user.email "noreply@anthropic.com"
           git add data output dashboard
           git diff --cached --quiet && exit 0
           git commit -m "agent: news run $(date -u +%FT%TZ)"
