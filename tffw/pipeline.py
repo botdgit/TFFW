@@ -123,6 +123,14 @@ def run_live() -> None:
     )
     log.info("live: %d matches in window", len(matches))
 
+    # fast-mode marker: while any monitored match is in play, the session
+    # loop polls every ~20s instead of every 2 minutes
+    marker = config.DATA_DIR / "LIVE_MATCH"
+    if any(m["status"] in ("IN_PLAY", "PAUSED") for m in matches):
+        marker.touch()
+    else:
+        marker.unlink(missing_ok=True)
+
     for m in matches:
         key = f"matchstate:{m['id']}"
         prev = db.get_event(key) or {}

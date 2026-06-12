@@ -12,3 +12,6 @@ venv/
 # ignore data/, output/ or dashboard/)
 *.tmp
 .pytest_cache/
+
+# transient fast-mode marker (state, not content)
+data/LIVE_MATCH
