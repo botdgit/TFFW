@@ -35,9 +35,10 @@ def _queue(fmt: str, headline: str, facts: dict, confidence: float, sources: lis
         log.info("SKIP (confidence %.2f < %.2f): %s", confidence, config.MIN_CONFIDENCE, headline)
         return
 
-    # near-duplicate guard: the same story phrased differently by another
-    # outlet must not post twice (single-source mode makes this possible)
-    if _near_duplicate(headline):
+    # near-duplicate guard: the same NEWS story phrased differently by
+    # another outlet must not post twice. Match events (kick-off, goals,
+    # FT) are exempt — their headlines legitimately share team names.
+    if fmt not in ("LIVE WHISTLE", "FINAL WHISTLE") and _near_duplicate(headline):
         log.info("near-duplicate, not queued: %s", headline)
         return
 
