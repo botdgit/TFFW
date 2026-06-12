@@ -35,6 +35,12 @@ def _queue(fmt: str, headline: str, facts: dict, confidence: float, sources: lis
         log.info("SKIP (confidence %.2f < %.2f): %s", confidence, config.MIN_CONFIDENCE, headline)
         return
 
+    # near-duplicate guard: the same story phrased differently by another
+    # outlet must not post twice (single-source mode makes this possible)
+    if _near_duplicate(headline):
+        log.info("near-duplicate, not queued: %s", headline)
+        return
+
     facts = {**facts, "date_label": _date_label()}
     seed = sum(ord(c) for c in headline)
     caption, alt_text = captions.build_caption(fmt, facts, seed)
@@ -69,6 +75,23 @@ def _queue(fmt: str, headline: str, facts: dict, confidence: float, sources: lis
         graphics.render_story(post_id, fmt, facts)
 
     log.info("QUEUED #%d [%s] %s (conf %.2f)", post_id, fmt, headline, confidence)
+
+
+def _near_duplicate(headline: str) -> bool:
+    """True when a recent post (any status except skipped) already covers
+    this story — token overlap across differently-phrased headlines."""
+    tokens = verification.tokenize(headline)
+    if not tokens:
+        return False
+    with db.connect() as conn:
+        rows = conn.execute(
+            "SELECT headline FROM posts WHERE status != 'skipped' "
+            "AND created_at >= datetime('now', '-1 day')"
+        ).fetchall()
+    for r in rows:
+        if verification.similarity(tokens, verification.tokenize(r["headline"])) >= 0.5:
+            return True
+    return False
 
 
 def _attach_photo(facts: dict, headline: str, claim_key: str) -> dict:
@@ -283,15 +306,16 @@ def run_publish() -> None:
         log.info("publish: daily cap reached (%d)", config.MAX_POSTS_PER_DAY)
         return
 
-    # Spacing between posts
+    # Spacing between posts — live match moments bypass the gate
     last = db.last_publish_time()
-    if last is not None:
-        gap = datetime.now(timezone.utc) - last
-        if gap < timedelta(minutes=config.MIN_MINUTES_BETWEEN_POSTS):
-            log.info("publish: spacing gate (%s since last post)", gap)
-            return
+    gap_ok = last is None or (
+        datetime.now(timezone.utc) - last >= timedelta(minutes=config.MIN_MINUTES_BETWEEN_POSTS)
+    )
 
     for post in db.due_posts(config.MAX_POSTS_PER_RUN):
+        if not gap_ok and post["format"] not in ("LIVE WHISTLE", "FINAL WHISTLE"):
+            log.info("publish: spacing gate holds #%d", post["id"])
+            continue
         _publish_one(post)
 
 

@@ -36,16 +36,19 @@ def main() -> int:
         return 0
 
     last = db.last_publish_time()
-    if last is not None:
-        gap = datetime.now(timezone.utc) - last
-        if gap < timedelta(minutes=config.MIN_MINUTES_BETWEEN_POSTS):
-            print(json.dumps({"due": [], "reason": f"spacing gate ({gap})"}))
-            return 0
+    gap_ok = last is None or (
+        datetime.now(timezone.utc) - last >= timedelta(minutes=config.MIN_MINUTES_BETWEEN_POSTS)
+    )
 
     # one post per call: the session loop runs every couple of minutes, so
-    # this paces a busy queue smoothly instead of bursting
+    # this paces a busy queue smoothly instead of bursting. Live match
+    # moments (kick-off, goals, full-time) BYPASS the spacing gate —
+    # they must go out the moment they happen.
     due = []
     for p in db.due_posts(1):
+        if not gap_ok and p["format"] not in ("LIVE WHISTLE", "FINAL WHISTLE"):
+            print(json.dumps({"due": [], "reason": "spacing gate (non-live post waiting)"}))
+            return 0
         filename = (p["image_path"] or "").split("/")[-1]
         base = f"https://raw.githubusercontent.com/botdgit/TFFW/{BRANCH}/output/media"
         item = {
