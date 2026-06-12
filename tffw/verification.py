@@ -122,6 +122,7 @@ IRRELEVANT_TERMS = (
     # feed junk / interactive formats
     "quiz", "podcast", "listen:", "watch:", "gossip", "have your say",
     "predict the score", "fans react", "fan vote", "you are ", "vote for",
+    "? vote", "vote!", "have your say", "rate the", "pick your",
     "how to follow", "tv guide", "betting", "odds", "crossword",
     "weekly round-up", "in pictures", "photo gallery", "fantasy tips",
     # other sports that appear in mixed sport feeds

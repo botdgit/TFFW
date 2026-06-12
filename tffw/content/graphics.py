@@ -162,10 +162,10 @@ def _canvas(texture_seed: int | None = None) -> tuple[Image.Image, ImageDraw.Ima
     img.paste(Image.alpha_composite(img.convert("RGBA"), marks).convert("RGB"), (0, 0))
     draw = ImageDraw.Draw(img)
 
-    # logo badge, top centre
-    badge = _logo_white(150)
+    # logo badge top-left (kicker pill lives top-right)
+    badge = _logo_white(140)
     if badge is not None:
-        img.paste(badge, ((W - badge.width) // 2, 56), badge)
+        img.paste(badge, (56, 56), badge)
 
     return img, draw
 
@@ -185,18 +185,19 @@ def _tracked_width(draw: ImageDraw.ImageDraw, text: str,
     return sum(draw.textlength(c, font=font) + tracking for c in text) - (tracking if text else 0)
 
 
-def _kicker(draw: ImageDraw.ImageDraw, fmt: str, y: int = 252) -> None:
-    """Centered format chip: ● FORMAT NAME on a green pill."""
-    f = label(34)
+def _kicker(draw: ImageDraw.ImageDraw, fmt: str, y: int = 70) -> None:
+    """Format chip: ● FORMAT NAME on a green pill, top-right corner so it
+    never covers the middle of a photo background."""
+    f = label(30)
     text = fmt.upper()
-    tw = _tracked_width(draw, text, f, 8)
-    pad, dot_r = 38, 9
-    total = tw + pad * 2 + dot_r * 2 + 18
-    x0 = (W - total) / 2
-    draw.rounded_rectangle([x0, y, x0 + total, y + 78], radius=39, fill=GREEN)
-    cy = y + 39
+    tw = _tracked_width(draw, text, f, 7)
+    pad, dot_r = 32, 8
+    total = tw + pad * 2 + dot_r * 2 + 16
+    x0 = W - 60 - total
+    draw.rounded_rectangle([x0, y, x0 + total, y + 68], radius=34, fill=GREEN)
+    cy = y + 34
     draw.ellipse([x0 + pad - dot_r, cy - dot_r, x0 + pad + dot_r, cy + dot_r], fill=PITCH_BOTTOM)
-    _tracked(draw, (x0 + pad + dot_r * 2 + 18, y + 17), text, f, PITCH_BOTTOM, 8)
+    _tracked(draw, (x0 + pad + dot_r * 2 + 16, y + 16), text, f, PITCH_BOTTOM, 7)
 
 
 def _footer(draw: ImageDraw.ImageDraw, sub: str = "") -> None:
@@ -426,9 +427,9 @@ def _photo_card(fmt: str, facts: dict) -> Image.Image:
     img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
 
     draw = ImageDraw.Draw(img)
-    badge = _logo_white(150)
+    badge = _logo_white(140)
     if badge is not None:
-        img.paste(badge, ((W - badge.width) // 2, 56), badge)
+        img.paste(badge, (56, 56), badge)
         draw = ImageDraw.Draw(img)
     _kicker(draw, fmt)
 
