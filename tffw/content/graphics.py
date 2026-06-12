@@ -351,13 +351,27 @@ def _scoreboard(fmt: str, facts: dict) -> Image.Image:
     fname = display(size)
     fscore = display(150)
 
-    for name, score, y in rows:
+    scorers = facts.get("scorers") or []
+    for side, (name, score, y) in zip(("home", "away"), rows):
         ny = y + (150 - size) // 2 + 10
         draw.text((MARGIN, ny), name.upper(), font=fname, fill=WHITE)
         if has_score:
             s = str(score)
             sw = draw.textlength(s, font=fscore)
             draw.text((score_x - sw, y), s, font=fscore, fill=GREEN_BRIGHT)
+        # scorer credits under the team name (from the official feed)
+        side_scorers = [sc for sc in scorers if sc.get("side") == side and sc.get("name")]
+        if side_scorers:
+            fsc = meta_light(34)
+            line = "  ·  ".join(
+                f"{sc['name'].upper()} {sc.get('minute','')}"
+                + (" (P)" if sc.get("pen") else "")
+                + (" (OG)" if sc.get("og") else "")
+                for sc in side_scorers[:3]
+            )
+            while draw.textlength(line, font=fsc) > W - 2 * MARGIN - 200 and fsc.size > 26:
+                fsc = meta_light(fsc.size - 2)
+            draw.text((MARGIN + 4, ny + size + 14), line, font=fsc, fill=META)
 
     if not has_score:
         # kick-off card: "VS" divider between the rows

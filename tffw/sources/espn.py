@@ -40,6 +40,24 @@ def todays_matches() -> list[dict]:
             comp = (ev.get("competitions") or [{}])[0]
             sides = {c.get("homeAway"): c for c in comp.get("competitors", [])}
             home, away = sides.get("home", {}), sides.get("away", {})
+            team_side = {
+                (c.get("team") or {}).get("id"): c.get("homeAway")
+                for c in comp.get("competitors", [])
+            }
+            scorers, reds = [], []
+            for d in comp.get("details") or []:
+                athletes = d.get("athletesInvolved") or [{}]
+                entry = {
+                    "name": athletes[0].get("shortName") or athletes[0].get("displayName", ""),
+                    "minute": (d.get("clock") or {}).get("displayValue", ""),
+                    "side": team_side.get((d.get("team") or {}).get("id"), ""),
+                }
+                if d.get("scoringPlay"):
+                    entry["pen"] = d.get("penaltyKick", False)
+                    entry["og"] = d.get("ownGoal", False)
+                    scorers.append(entry)
+                elif d.get("redCard"):
+                    reds.append(entry)
             state = ((ev.get("status") or {}).get("type") or {}).get("state", "pre")
             status = STATE_MAP.get(state, "TIMED")
             completed = ((ev.get("status") or {}).get("type") or {}).get("completed", False)
@@ -57,6 +75,9 @@ def todays_matches() -> list[dict]:
                     "away_full": (away.get("team") or {}).get("displayName", "?"),
                     "home_score": int(home["score"]) if scores_live and home.get("score") is not None else None,
                     "away_score": int(away["score"]) if scores_live and away.get("score") is not None else None,
+                    "scorers": scorers,
+                    "red_cards": reds,
+                    "minute": ((ev.get("status") or {}).get("type") or {}).get("shortDetail", ""),
                     "source": "espn.com",
                 }
             )

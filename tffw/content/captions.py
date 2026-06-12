@@ -93,9 +93,18 @@ def _claude_caption(fmt: str, facts: dict, prompt_line: str) -> str | None:
 
 def _template_caption(fmt: str, facts: dict, prompt_line: str) -> str:
     f = facts
+
+    def _scorer_line() -> str:
+        names = [
+            f"{sc['name']} {sc.get('minute','')}" + (" (pen)" if sc.get("pen") else "")
+            for sc in (f.get("scorers") or []) if sc.get("name")
+        ]
+        return ("⚽ " + " · ".join(names[:5])) if names else ""
+
     if fmt == "FINAL WHISTLE":
         lines = [
             f"FT: {f.get('home')} {f.get('home_score')}-{f.get('away_score')} {f.get('away')} 🏁",
+            _scorer_line(),
             f"{f.get('competition', '')}".strip(),
         ]
     elif fmt == "LIVE WHISTLE":
@@ -106,9 +115,21 @@ def _template_caption(fmt: str, facts: dict, prompt_line: str) -> str:
                 f"WE'RE LIVE: {f.get('home')} vs {f.get('away')} 🟢",
                 f"{f.get('competition', '')}".strip(),
             ]
-        else:
+        elif f.get("event") == "red_card":
+            rc = f.get("red_card") or {}
             lines = [
-                f"{f.get('home')} {f.get('home_score')}-{f.get('away_score')} {f.get('away')} ⚽",
+                f"RED CARD 🟥 {rc.get('name')} ({f.get('red_card_team')}) {rc.get('minute')}",
+                f"{f.get('home')} {f.get('home_score')}-{f.get('away_score')} {f.get('away')} — LIVE",
+            ]
+        else:
+            scorer = f.get("goal_scorer") or {}
+            goal_line = (
+                f"GOAL ⚽ {scorer.get('name')} {scorer.get('minute')}"
+                if scorer.get("name") else ""
+            )
+            lines = [
+                goal_line,
+                f"{f.get('home')} {f.get('home_score')}-{f.get('away_score')} {f.get('away')}",
                 f"{f.get('competition', '')} — LIVE".strip(),
             ]
     elif fmt == "TRANSFER WHISTLE":

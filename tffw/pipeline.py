@@ -135,12 +135,15 @@ def run_live() -> None:
     for m in matches:
         key = f"matchstate:{m['id']}"
         prev = db.get_event(key) or {}
+        scorers = m.get("scorers") or []
+        reds = m.get("red_cards") or []
         cur = {
             "status": m["status"],
             "home_score": m["home_score"],
             "away_score": m["away_score"],
+            "reds": len(reds),
         }
-        if prev == cur:
+        if {k: prev.get(k) for k in cur} == cur:
             continue
 
         base_facts = {
@@ -148,8 +151,24 @@ def run_live() -> None:
             "home_full": m["home_full"], "away_full": m["away_full"],
             "home_score": m["home_score"], "away_score": m["away_score"],
             "competition": m["competition"], "competition_code": m["competition_code"],
+            "scorers": scorers,
+            "match_minute": m.get("minute", ""),
         }
         teams = f"{m['home']} vs {m['away']}"
+
+        # Red card — name + minute from the official feed
+        if m["status"] in ("IN_PLAY", "PAUSED", "LIVE") and "reds" in prev \
+                and cur["reds"] > prev["reds"]:
+            rc = reds[-1]
+            rc_team = m["home"] if rc.get("side") == "home" else m["away"]
+            _queue(
+                "LIVE WHISTLE",
+                f"RED CARD: {rc.get('name')} ({rc_team}) {rc.get('minute')}",
+                {**base_facts, "event": "red_card", "status_label": "RED CARD",
+                 "red_card": rc, "red_card_team": rc_team},
+                verification.score_live_update(),
+                [{"domain": m["source"], "title": "official match feed"}],
+            )
 
         # Kick-off
         if m["status"] in ("IN_PLAY", "LIVE") and prev.get("status") in (None, "TIMED", "SCHEDULED"):
@@ -167,10 +186,13 @@ def run_live() -> None:
             prev.get("home_score") is not None
             and (cur["home_score"], cur["away_score"]) != (prev.get("home_score"), prev.get("away_score"))
         ):
+            latest = scorers[-1] if scorers else {}
+            scorer_tag = f" — {latest.get('name')} {latest.get('minute')}" if latest.get("name") else ""
             _queue(
                 "LIVE WHISTLE",
-                f"GOAL: {m['home']} {m['home_score']}-{m['away_score']} {m['away']}",
-                {**base_facts, "event": "goal", "status_label": "LIVE"},
+                f"GOAL: {m['home']} {m['home_score']}-{m['away_score']} {m['away']}{scorer_tag}",
+                {**base_facts, "event": "goal", "status_label": "LIVE",
+                 "goal_scorer": latest},
                 verification.score_live_update(),
                 [{"domain": m["source"], "title": "official match feed"}],
             )
