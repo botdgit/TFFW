@@ -126,7 +126,7 @@ def entity_hashtags(text: str) -> list[str]:
         if fragment in low:
             tags.extend(frag_tags)
     # likely person names not already covered (e.g. "McTominay", "Pogba")
-    for word in re.findall(r"[A-ZÀ-Þ][a-zà-ÿ'']{4,}", text):
+    for word in re.findall(r"[A-ZÀ-Þ][A-Za-zà-ÿ'']{4,}", text):
         if word in _NAME_STOP:
             continue
         slug = "#" + re.sub(r"[^a-z0-9]", "", word.lower())
