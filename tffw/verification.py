@@ -126,6 +126,7 @@ IRRELEVANT_TERMS = (
     "ranking the", "power rankings", "ranked:", "top 10", "top 25",
     "top 50", "top 100", "best players in", "let's rank",
     "– live", "— live", ": live", "live blog", "liveblog", "as it happened",
+    "football daily", "sign up", "newsletter", "subscribe",
     "how to follow", "tv guide", "betting", "odds", "crossword",
     "weekly round-up", "in pictures", "photo gallery", "fantasy tips",
     # other sports that appear in mixed sport feeds
