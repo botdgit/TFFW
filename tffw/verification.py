@@ -123,6 +123,8 @@ IRRELEVANT_TERMS = (
     "quiz", "podcast", "listen:", "watch:", "gossip", "have your say",
     "predict the score", "fans react", "fan vote", "you are ", "vote for",
     "? vote", "vote!", "have your say", "rate the", "pick your",
+    "ranking the", "power rankings", "ranked:", "top 10", "top 25",
+    "top 50", "top 100", "best players in", "let's rank",
     "how to follow", "tv guide", "betting", "odds", "crossword",
     "weekly round-up", "in pictures", "photo gallery", "fantasy tips",
     # other sports that appear in mixed sport feeds

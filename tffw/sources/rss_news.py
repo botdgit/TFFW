@@ -83,7 +83,9 @@ def _text(el: ET.Element, tag: str) -> str:
 
 
 def _clean_title(title: str) -> str:
-    """Some feeds (ESPN) truncate titles with a trailing ellipsis."""
+    """Strip feed artefacts: trailing ellipses and emoji/symbols the
+    display font can't render on graphics."""
+    title = re.sub(r"[\U0001F000-\U0001FAFF☀-➿️]", "", title)
     return title.rstrip(". ").rstrip("…").strip()
 
 
