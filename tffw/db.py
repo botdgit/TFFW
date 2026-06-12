@@ -228,9 +228,10 @@ def due_posts(limit: int) -> list[dict]:
     with connect() as conn:
         rows = conn.execute(
             "SELECT * FROM posts WHERE status = 'queued' AND scheduled_for <= ? "
-            "ORDER BY CASE WHEN format IN "
-            "('BREAKING','TRANSFER WHISTLE','VAR CHECK','LIVE WHISTLE','FINAL WHISTLE') "
-            "THEN 0 ELSE 1 END, confidence DESC, scheduled_for ASC",
+            "ORDER BY CASE "
+            "WHEN format IN ('LIVE WHISTLE','FINAL WHISTLE') THEN 0 "
+            "WHEN format IN ('BREAKING','TRANSFER WHISTLE','VAR CHECK') THEN 1 "
+            "ELSE 2 END, confidence DESC, scheduled_for ASC",
             (now_iso(),),
         ).fetchall()
     out = []
