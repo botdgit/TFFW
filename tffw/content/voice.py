@@ -9,6 +9,7 @@ Fallback: Microsoft Edge neural TTS (free, keyless): en-GB-RyanNeural.
 """
 
 import os
+import re
 import ssl
 
 import requests
@@ -83,26 +84,84 @@ def _edge(text: str, out_path) -> bool:
 
 def build_recap_script(facts: dict) -> str:
     """Podcast-style ~30s narration built strictly from verified match
-    facts (teams, score, scorers with minutes, competition)."""
-    home, away = facts.get("home", ""), facts.get("away", "")
+    facts (teams, score, scorers with minutes, competition). The phrasing
+    follows the story of the game — deadlock broken, equalisers, leads
+    extended, goals pulled back, late drama — never invented detail."""
+    home = facts.get("home_full") or facts.get("home", "")
+    away = facts.get("away_full") or facts.get("away", "")
     hs, as_ = facts.get("home_score"), facts.get("away_score")
     comp = facts.get("competition", "the match")
     scorers = [s for s in (facts.get("scorers") or []) if s.get("name")]
 
-    lines = [f"Welcome back to The Football Final Whistle — your recap of {home} against {away} in {comp}."]
-    for sc in scorers[:4]:
-        side_team = home if sc.get("side") == "home" else away
+    def minute_n(sc) -> int:
+        m = re.search(r"\d+", sc.get("minute") or "")
+        return int(m.group()) if m else 0
+
+    scorers = sorted(scorers, key=minute_n)
+    lines = [f"Welcome back to The Football Final Whistle — your recap of "
+             f"{home} against {away} in {comp}."]
+
+    h = a = 0
+    home_trailed = away_trailed = False
+    for i, sc in enumerate(scorers[:4]):
+        is_home = sc.get("side") == "home"
+        team = home if is_home else away
+        h, a = (h + 1, a) if is_home else (h, a + 1)
+        home_trailed, away_trailed = home_trailed or h < a, away_trailed or a < h
+        mn = minute_n(sc)
+        when = f"in the {_minute_words(mn)} minute" if mn else "in the second half"
         pen = " from the penalty spot" if sc.get("pen") else ""
-        og = " — an own goal" if sc.get("og") else ""
-        lines.append(f"{sc['name']} scored for {side_team}{pen} in the {sc.get('minute','')} minute{og}.")
-    if hs is not None:
-        if hs == as_:
+        lead = "Deep into the closing stages, " if mn >= 85 else ""
+
+        if sc.get("og"):
+            verb = f"An own goal gifted {team} {'the opener' if i == 0 else 'another'}"
+            lines.append(f"{lead}{verb} {when}." if not lead else f"{lead}{verb[0].lower()}{verb[1:]} {when}.")
+            continue
+        # narrate surnames the way a commentator would ("Lukic", not "J. Lukic")
+        name = re.sub(r"^[A-Z]\.\s*", "", sc["name"])
+        if i == 0:
+            phrase = f"{name} broke the deadlock for {team}{pen} {when}"
+        elif h == a:
+            phrase = f"{name} levelled it for {team}{pen} {when}"
+        elif (h > a) == is_home and abs(h - a) == 1:
+            phrase = f"{name} put {team} in front{pen} {when}"
+        elif (h > a) == is_home:
+            phrase = f"{name} stretched the lead for {team}{pen} {when}"
+        else:
+            phrase = f"{name} pulled one back for {team}{pen} {when}"
+        lines.append(f"{lead}{phrase}.")
+
+    if hs is not None and as_ is not None:
+        if hs == as_ == 0:
+            lines.append("Chances at both ends, but no breakthrough — it finished goalless.")
+        elif hs == as_:
             lines.append(f"It finished {_num(hs)}–{_num(as_)} — a point apiece.")
         else:
-            winner, ls, ws = (home, as_, hs) if hs > as_ else (away, hs, as_)
-            lines.append(f"It finished {_num(max(hs,as_))}–{_num(min(hs,as_))} to {winner}.")
+            winner = home if hs > as_ else away
+            comeback = home_trailed if hs > as_ else away_trailed
+            tail = " — a comeback to savour" if comeback else ""
+            lines.append(f"It finished {_num(max(hs, as_))}–{_num(min(hs, as_))} to {winner}{tail}.")
     lines.append("Follow The Football Final Whistle for every goal, every game.")
     return " ".join(lines)
+
+
+def _minute_words(n: int) -> str:
+    """Ordinal minute for natural speech ('twenty-first')."""
+    ones = ["", "first", "second", "third", "fourth", "fifth", "sixth",
+            "seventh", "eighth", "ninth"]
+    teens = {10: "tenth", 11: "eleventh", 12: "twelfth", 13: "thirteenth",
+             14: "fourteenth", 15: "fifteenth", 16: "sixteenth",
+             17: "seventeenth", 18: "eighteenth", 19: "nineteenth"}
+    tens = {2: "twent", 3: "thirt", 4: "fort", 5: "fift", 6: "sixt",
+            7: "sevent", 8: "eight", 9: "ninet"}
+    if 1 <= n <= 9:
+        return ones[n]
+    if n in teens:
+        return teens[n]
+    t, o = divmod(n, 10)
+    if t in tens:
+        return f"{tens[t]}ieth" if o == 0 else f"{tens[t]}y-{ones[o]}"
+    return str(n)
 
 
 def _num(n) -> str:

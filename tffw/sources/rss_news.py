@@ -104,7 +104,12 @@ def _repair_title(title: str, summary: str) -> str:
 
 
 def _strip_html(text: str) -> str:
-    return re.sub(r"<[^>]+>", "", text)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    # repair sentences the feed glued together ("...training campScotland
+    # said..." -> "...training camp. Scotland said...") without breaking
+    # names like McInnes (only one lowercase letter before the capital)
+    return re.sub(r"([a-z]{3,})([A-Z][a-z])", r"\1. \2", text)
 
 
 def _parse_date(raw: str) -> str:

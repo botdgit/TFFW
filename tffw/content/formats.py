@@ -39,7 +39,20 @@ ENGAGEMENT_PROMPTS = {
     "LIVE WHISTLE": [
         "Who's running this game? Drop it below 👇",
         "Calling the final score now — comments open ⬇️",
-        "Rate the first half out of 10 👇",
+    ],
+    "LIVE WHISTLE:kickoff": [
+        "Score predictions — lock them in now 👇",
+        "Who takes this one? Call it ⬇️",
+        "First scorer? Drop your pick 👇",
+    ],
+    "LIVE WHISTLE:goal": [
+        "Who's running this game? Drop it below 👇",
+        "Calling the final score now — comments open ⬇️",
+        "Game over or game on? 👇",
+    ],
+    "LIVE WHISTLE:red_card": [
+        "Right call or harsh? You decide 👇",
+        "Does this change the game? ⬇️",
     ],
     "FINAL WHISTLE": [
         "Player of the match? Comments below 👇",
@@ -137,7 +150,8 @@ def entity_hashtags(text: str) -> list[str]:
 
 def team_hashtag(team: str) -> str:
     slug = re.sub(r"[^a-z0-9]", "", team.lower())
-    return f"#{slug}" if slug else ""
+    # long multi-word slugs ("bosniaandherzegovina") read like keyboard mash
+    return f"#{slug}" if slug and len(slug) <= 14 else ""
 
 
 def build_hashtags(fmt: str, competition_code: str = "", teams: list[str] | None = None,
@@ -158,6 +172,9 @@ def build_hashtags(fmt: str, competition_code: str = "", teams: list[str] | None
     return " ".join(out[:15])
 
 
-def engagement_prompt(fmt: str, seed: int) -> str:
-    prompts = ENGAGEMENT_PROMPTS.get(fmt, ENGAGEMENT_PROMPTS["BREAKING"])
+def engagement_prompt(fmt: str, seed: int, event: str = "") -> str:
+    """Prompt pool keyed by format, refined by the match event so a
+    kick-off post never asks viewers to rate a half that hasn't happened."""
+    prompts = (ENGAGEMENT_PROMPTS.get(f"{fmt}:{event}") if event else None) \
+        or ENGAGEMENT_PROMPTS.get(fmt, ENGAGEMENT_PROMPTS["BREAKING"])
     return prompts[seed % len(prompts)]

@@ -33,11 +33,12 @@ HARD RULES:
 
 def build_caption(fmt: str, facts: dict, seed: int) -> tuple[str, str]:
     """Returns (caption_with_hashtags, alt_text)."""
-    prompt_line = formats.engagement_prompt(fmt, seed)
+    prompt_line = formats.engagement_prompt(fmt, seed, facts.get("event", ""))
     hashtags = formats.build_hashtags(
         fmt,
         facts.get("competition_code", ""),
-        [t for t in (facts.get("home"), facts.get("away")) if t],
+        [t for t in (facts.get("home"), facts.get("away"),
+                     facts.get("home_full"), facts.get("away_full")) if t],
         headline=facts.get("headline", ""),
     )
 
