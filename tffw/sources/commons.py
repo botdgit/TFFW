@@ -103,6 +103,8 @@ def find_photo(query: str) -> dict | None:
         width, height = info.get("width", 0), info.get("height", 0)
         if width < 800 or height < 500:
             continue
+        if width * height > 40_000_000:  # skip enormous scans/panoramas
+            continue
         artist = _strip_html((meta.get("Artist", {}) or {}).get("value", ""))[:60]
         candidate = {
             "url": info.get("url"),

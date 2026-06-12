@@ -381,7 +381,7 @@ def _photo_card(fmt: str, facts: dict) -> Image.Image:
     photo_file = config.ROOT / facts["photo_path"]
     try:
         photo = Image.open(photo_file).convert("RGB")
-    except OSError:
+    except Exception:  # corrupt file, oversized image, missing path, ...
         return _headline_card(fmt, facts)
 
     # cover-crop to 1080 x 720
