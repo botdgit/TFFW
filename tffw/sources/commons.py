@@ -19,7 +19,8 @@ API = "https://commons.wikimedia.org/w/api.php"
 UA = {"User-Agent": "tffw-agent/1.0 (https://github.com/botdgit/TFFW)"}
 
 FREE_LICENSES = ("cc by", "cc-by", "cc0", "public domain", "pd")
-SKIP_TITLE_WORDS = ("logo", "crest", "badge", "kit ", "flag of", "map", "stadium plan")
+SKIP_TITLE_WORDS = ("logo", "crest", "badge", "kit ", "flag of", "map", "stadium plan",
+                    "poster", "illustration", "painting", "drawing", "cartoon", "statue")
 
 STOPWORDS = {
     "the", "a", "an", "after", "before", "with", "over", "for", "and", "as",
