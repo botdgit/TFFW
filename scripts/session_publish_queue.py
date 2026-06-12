@@ -4,6 +4,11 @@ session publishing through the Buffer connector instead of an API token).
 Honours the same pacing gates as tffw.pipeline.run_publish: daily cap,
 minimum gap between posts, and MAX_POSTS_PER_RUN.
 
+The publishing session may rewrite the caption BODY in the brand voice
+(fast, sharp, opinionated-but-credible) using ONLY the headline and
+story_summary fields below — never adding facts — and must keep the tail
+(hashtags / Sources / 📸 credit lines) intact.
+
     python scripts/session_publish_queue.py
 """
 
@@ -48,6 +53,8 @@ def main() -> int:
             "format": p["format"],
             "headline": p["headline"],
             "caption": p["caption"],
+            "story_summary": p["facts"].get("story_summary", ""),
+            "engagement_prompt": p["caption"].split("\n.\n")[0].splitlines()[-1],
             "alt_text": p["alt_text"],
             "confidence": p["confidence"],
             "image_url": f"{base}/{filename}",

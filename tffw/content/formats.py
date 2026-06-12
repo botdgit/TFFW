@@ -50,6 +50,9 @@ ENGAGEMENT_PROMPTS = {
         "Good business or panic buy? 👇",
         "Hit or flop? Call it now ⬇️",
         "What's the right fee here? Comments 👇",
+        "Does he start week one? ⬇️",
+        "Upgrade or sideways move? 👇",
+        "Who wins this deal? ⬇️",
     ],
     "VAR CHECK": [
         "Right call or robbery? 👇",
@@ -66,7 +69,11 @@ ENGAGEMENT_PROMPTS = {
     ],
     "BREAKING": [
         "Thoughts? 👇",
-        "How big is this? Comments below ⬇️",
+        "Big story or nothing-burger? ⬇️",
+        "Where does this leave them? 👇",
+        "Saw this coming? ⬇️",
+        "Your take in one line 👇",
+        "Does this change anything? ⬇️",
     ],
 }
 

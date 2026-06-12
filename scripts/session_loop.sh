@@ -12,7 +12,11 @@ i=0
 while true; do
   i=$((i + 1))
 
-  git fetch origin >/dev/null 2>&1 && git reset --hard "origin/$BRANCH" >/dev/null 2>&1
+  # only sync when the tree is clean — never clobber in-progress edits made
+  # by an interactive session sharing this worktree
+  if [ -z "$(git status --porcelain)" ]; then
+    git fetch origin >/dev/null 2>&1 && git reset --hard "origin/$BRANCH" >/dev/null 2>&1
+  fi
 
   python -m tffw.main live >/dev/null 2>&1 || echo "TFFW ERROR: live mode crashed (cycle $i)"
   python -m tffw.main news >/dev/null 2>&1 || echo "TFFW ERROR: news mode crashed (cycle $i)"

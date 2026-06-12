@@ -112,15 +112,32 @@ def _template_caption(fmt: str, facts: dict, prompt_line: str) -> str:
                 f"{f.get('competition', '')} — LIVE".strip(),
             ]
     elif fmt == "TRANSFER WHISTLE":
-        lines = ["TRANSFER WHISTLE 🔁", f.get("headline", "")]
+        lines = ["TRANSFER WHISTLE 🔁", f.get("headline", ""), _context_line(f)]
     elif fmt == "VAR CHECK":
-        lines = ["VAR CHECK 📺", f.get("headline", "")]
+        lines = ["VAR CHECK 📺", f.get("headline", ""), _context_line(f)]
     elif fmt == "TEAM SHEET":
-        lines = ["TEAM SHEET 📋", f.get("headline", "")]
+        lines = ["TEAM SHEET 📋", f.get("headline", ""), _context_line(f)]
+    elif fmt == "MATCHDAY":
+        lines = ["MATCHDAY 🗓️", f.get("headline", "")]
     else:  # BREAKING
-        lines = ["BREAKING 🚨", f.get("headline", "")]
+        lines = ["BREAKING 🚨", f.get("headline", ""), _context_line(f)]
     body = "\n\n".join(l for l in lines if l)
     return f"{body}\n\n{prompt_line}"
+
+
+def _context_line(facts: dict) -> str:
+    """Editorial context straight from the source outlet's own summary —
+    adds substance without inventing anything."""
+    summary = (facts.get("story_summary") or "").strip()
+    if not summary:
+        return ""
+    headline_tokens = set((facts.get("headline") or "").lower().split())
+    # skip summaries that just restate the headline
+    if len(set(summary.lower().split()) - headline_tokens) < 5:
+        return ""
+    if len(summary) > 220:
+        summary = summary[:217].rsplit(" ", 1)[0] + "…"
+    return summary
 
 
 def _alt_text(fmt: str, facts: dict) -> str:
