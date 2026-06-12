@@ -309,12 +309,6 @@ def _headline_card(fmt: str, facts: dict) -> Image.Image:
         draw.text((MARGIN, y), line, font=fh, fill=WHITE)
         y += line_h
 
-    domains = facts.get("source_domains") or []
-    if domains:
-        f = meta_light(40)
-        src = "SOURCES: " + "  ·  ".join(d.upper() for d in domains[:3])
-        _tracked(draw, (MARGIN, 1118), src, f, META, 3)
-
     _footer(draw, facts.get("date_label", ""))
     return img
 
@@ -330,8 +324,8 @@ def _photo_card(fmt: str, facts: dict) -> Image.Image:
     except OSError:
         return _headline_card(fmt, facts)
 
-    # cover-crop to 1080 x 780
-    target_w, target_h = W, 780
+    # cover-crop to 1080 x 720
+    target_w, target_h = W, 720
     scale = max(target_w / photo.width, target_h / photo.height)
     photo = photo.resize((int(photo.width * scale) + 1, int(photo.height * scale) + 1), Image.LANCZOS)
     left = (photo.width - target_w) // 2
@@ -347,8 +341,8 @@ def _photo_card(fmt: str, facts: dict) -> Image.Image:
     for y in range(300):
         od.line([(0, y), (W, y)], fill=(4, 21, 10, int(190 * (1 - y / 300))))
     bottom = _hex(PITCH_TOP)
-    for y in range(420, target_h):
-        a = int(255 * ((y - 420) / (target_h - 420)) ** 1.2)
+    for y in range(400, target_h):
+        a = int(255 * ((y - 400) / (target_h - 400)) ** 1.1)
         od.line([(0, y), (W, y)], fill=(*bottom, a))
     img.paste(Image.alpha_composite(img.convert("RGBA").crop((0, 0, W, target_h)), overlay).convert("RGB"), (0, 0))
 
@@ -359,8 +353,10 @@ def _photo_card(fmt: str, facts: dict) -> Image.Image:
         draw = ImageDraw.Draw(img)
     _kicker(draw, fmt)
 
+    # headline sits fully below the photo, on the solid gradient — never
+    # over the photo's subject. Sources/credits go in the caption instead.
     headline = (facts.get("headline") or "Football update").upper()
-    band_top, band_bottom = 760, 1120
+    band_top, band_bottom = 790, 1180
     for size in (86, 74, 64, 56, 48):
         fh = display(size)
         lines = _wrap_px(draw, headline, fh, W - 2 * MARGIN)
@@ -368,21 +364,12 @@ def _photo_card(fmt: str, facts: dict) -> Image.Image:
         if len(lines) * line_h <= (band_bottom - band_top):
             break
     lines = lines[:6]
-    y = band_top
+    block_h = len(lines) * line_h
+    y = band_top + (band_bottom - band_top - block_h) // 2
     draw.rectangle([MARGIN, y - 32, MARGIN + 110, y - 18], fill=GREEN)
     for line in lines:
         draw.text((MARGIN, y), line, font=fh, fill=WHITE)
         y += line_h
-
-    f = meta_light(32)
-    y_meta = 1138
-    domains = facts.get("source_domains") or []
-    if domains:
-        _tracked(draw, (MARGIN, y_meta),
-                 "SOURCES: " + " · ".join(d.upper() for d in domains[:2]), f, META, 2)
-        y_meta += 44
-    if facts.get("photo_credit"):
-        _tracked(draw, (MARGIN, y_meta), facts["photo_credit"].upper()[:80], f, META, 2)
 
     _footer(draw, facts.get("date_label", ""))
     return img
@@ -594,11 +581,19 @@ def _table(fmt: str, facts: dict) -> Image.Image:
     fhead = label(26)
     frow = meta(46)
     fpts = label(34)
-    cols = {"pos": 100, "team": 160, "p": 760, "gd": 860, "pts": 985}
+    # numeric columns right-aligned to fixed edges, well inside the card
+    pos_x, team_x = 104, 168
+    p_r, gd_r, pts_r = 790, 905, card_x1 - 40
+
+    def rtext(x_right, y_, s, font, fill):
+        draw.text((x_right - draw.textlength(s, font=font), y_), s, font=font, fill=fill)
 
     hy = card_y0 + 26
-    for key, txt in (("pos", "#"), ("team", "TEAM"), ("p", "P"), ("gd", "GD"), ("pts", "PTS")):
-        draw.text((cols[key], hy), txt, font=fhead, fill="#5E7A52")
+    draw.text((pos_x, hy), "#", font=fhead, fill="#5E7A52")
+    draw.text((team_x, hy), "TEAM", font=fhead, fill="#5E7A52")
+    rtext(p_r, hy, "P", fhead, "#5E7A52")
+    rtext(gd_r, hy, "GD", fhead, "#5E7A52")
+    rtext(pts_r, hy, "PTS", fhead, "#5E7A52")
 
     y = card_y0 + 70
     for i, r in enumerate(rows):
@@ -606,11 +601,11 @@ def _table(fmt: str, facts: dict) -> Image.Image:
             draw.rectangle([card_x0 + 14, y - 4, card_x1 - 14, y + row_h - 12], fill="#E8F2DF")
         if r["position"] <= 4:  # CL places marker
             draw.rectangle([card_x0 + 14, y - 4, card_x0 + 22, y + row_h - 12], fill=GREEN)
-        draw.text((cols["pos"], y), str(r["position"]), font=frow, fill=INK)
-        draw.text((cols["team"], y), str(r["team"])[:24].upper(), font=frow, fill=INK)
-        draw.text((cols["p"], y), str(r["played"]), font=frow, fill=INK)
-        draw.text((cols["gd"], y), f'{r["gd"]:+d}', font=frow, fill=INK)
-        draw.text((cols["pts"], y + 6), str(r["points"]), font=fpts, fill="#3E7A1E")
+        draw.text((pos_x, y), str(r["position"]), font=frow, fill=INK)
+        draw.text((team_x, y), str(r["team"])[:22].upper(), font=frow, fill=INK)
+        rtext(p_r, y, str(r["played"]), frow, INK)
+        rtext(gd_r, y, f'{r["gd"]:+d}', frow, INK)
+        rtext(pts_r, y + 6, str(r["points"]), fpts, "#3E7A1E")
         y += row_h
 
     _footer(draw, facts.get("date_label", ""))

@@ -46,7 +46,16 @@ def build_caption(fmt: str, facts: dict, seed: int) -> tuple[str, str]:
     if not body:
         body = _template_caption(fmt, facts, prompt_line)
 
-    caption = f"{body}\n.\n{hashtags}"
+    # sources + photo attribution live at the bottom of the caption,
+    # keeping the graphic itself clean (and satisfying CC license terms)
+    tail = [hashtags]
+    domains = facts.get("source_domains") or []
+    if domains:
+        tail.append("Sources: " + " · ".join(domains[:3]))
+    if facts.get("photo_credit"):
+        tail.append("📸 " + facts["photo_credit"].replace("PHOTO: ", "").title())
+
+    caption = f"{body}\n.\n" + "\n".join(tail)
     return caption[:2200], _alt_text(fmt, facts)
 
 
@@ -101,20 +110,15 @@ def _template_caption(fmt: str, facts: dict, prompt_line: str) -> str:
                 f"{f.get('competition', '')} — LIVE".strip(),
             ]
     elif fmt == "TRANSFER WHISTLE":
-        lines = ["TRANSFER WHISTLE 🔁", f.get("headline", ""), _source_line(f)]
+        lines = ["TRANSFER WHISTLE 🔁", f.get("headline", "")]
     elif fmt == "VAR CHECK":
-        lines = ["VAR CHECK 📺", f.get("headline", ""), _source_line(f)]
+        lines = ["VAR CHECK 📺", f.get("headline", "")]
     elif fmt == "TEAM SHEET":
-        lines = ["TEAM SHEET 📋", f.get("headline", ""), _source_line(f)]
+        lines = ["TEAM SHEET 📋", f.get("headline", "")]
     else:  # BREAKING
-        lines = ["BREAKING 🚨", f.get("headline", ""), _source_line(f)]
+        lines = ["BREAKING 🚨", f.get("headline", "")]
     body = "\n\n".join(l for l in lines if l)
     return f"{body}\n\n{prompt_line}"
-
-
-def _source_line(facts: dict) -> str:
-    domains = facts.get("source_domains") or []
-    return ("via " + " · ".join(domains[:3])) if domains else ""
 
 
 def _alt_text(fmt: str, facts: dict) -> str:
