@@ -210,13 +210,38 @@ def _footer(draw: ImageDraw.ImageDraw, sub: str = "") -> None:
         _tracked(draw, (W - MARGIN - tw, y + 30), sub.upper(), fr, META, 4)
 
 
+def _trophy(draw: ImageDraw.ImageDraw, cx: float, cy: float, h: int, color) -> None:
+    """Stylised trophy glyph (our own drawing — official tournament logos
+    are trademarks and are never used). cx,cy = top-centre, h = height."""
+    w = h * 0.78
+    bowl_h = h * 0.46
+    # bowl
+    draw.pieslice([cx - w / 2, cy - bowl_h * 0.35, cx + w / 2, cy + bowl_h * 1.4],
+                  start=0, end=180, fill=color)
+    # handles
+    lw = max(2, int(h * 0.07))
+    draw.arc([cx - w * 0.82, cy - bowl_h * 0.1, cx - w * 0.18, cy + bowl_h * 0.9],
+             start=90, end=270, fill=color, width=lw)
+    draw.arc([cx + w * 0.18, cy - bowl_h * 0.1, cx + w * 0.82, cy + bowl_h * 0.9],
+             start=270, end=90, fill=color, width=lw)
+    # stem + base
+    draw.rectangle([cx - w * 0.09, cy + bowl_h * 1.05, cx + w * 0.09, cy + h * 0.78], fill=color)
+    draw.rectangle([cx - w * 0.30, cy + h * 0.78, cx + w * 0.30, cy + h * 0.92], fill=color)
+
+
 def _competition(draw: ImageDraw.ImageDraw, text: str, y: int = 372) -> None:
     if not text:
         return
     f = meta(46)
     t = text.upper()
     tw = _tracked_width(draw, t, f, 10)
-    _tracked(draw, ((W - tw) / 2, y), t, f, META, 10)
+    is_wc = "world cup" in text.lower()
+    icon = 44 if is_wc else 0
+    gap = 18 if is_wc else 0
+    x0 = (W - tw - icon - gap) / 2
+    if is_wc:
+        _trophy(draw, x0 + icon / 2, y + 4, icon, GREEN_BRIGHT)
+    _tracked(draw, (x0 + icon + gap, y), t, f, META, 10)
 
 
 def _fit_display(draw: ImageDraw.ImageDraw, text: str, max_w: int,
@@ -674,7 +699,13 @@ def _reel_frame(img: Image.Image, t: float, fmt: str, facts: dict) -> Image.Imag
     if comp:
         fc = meta(54)
         cw = _tracked_width(cd, comp, fc, 10)
-        _tracked(cd, ((RW - cw) / 2, 580), comp, fc, META, 10)
+        is_wc = "world cup" in comp.lower()
+        icon = 52 if is_wc else 0
+        gap = 20 if is_wc else 0
+        cx0 = (RW - cw - icon - gap) / 2
+        if is_wc:
+            _trophy(cd, cx0 + icon / 2, 584, icon, GREEN_BRIGHT)
+        _tracked(cd, (cx0 + icon + gap, 580), comp, fc, META, 10)
     rgba = Image.alpha_composite(rgba, _with_alpha(chrome, a_chrome))
 
     # team rows slide in
