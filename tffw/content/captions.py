@@ -99,7 +99,9 @@ def _template_caption(fmt: str, facts: dict, prompt_line: str) -> str:
             f"{f.get('competition', '')}".strip(),
         ]
     elif fmt == "LIVE WHISTLE":
-        if f.get("event") == "kickoff":
+        if not f.get("home"):  # headline-style live post (no match facts)
+            lines = ["LIVE WHISTLE 🟢", f.get("headline", "")]
+        elif f.get("event") == "kickoff":
             lines = [
                 f"WE'RE LIVE: {f.get('home')} vs {f.get('away')} 🟢",
                 f"{f.get('competition', '')}".strip(),

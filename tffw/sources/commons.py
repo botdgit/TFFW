@@ -78,10 +78,18 @@ def find_photo(query: str) -> dict | None:
         db.log_error("commons", f"search {query}: {exc}")
         return None
 
+    q_tokens = {t for t in re.findall(r"[a-zà-ÿ0-9']+", query.lower()) if len(t) > 2}
     best = None
     for page in pages.values():
         title = (page.get("title") or "").lower()
         if any(w in title for w in SKIP_TITLE_WORDS):
+            continue
+        # relevance guard: the photo title must actually be about the
+        # queried subject, and never silently swap men's/women's teams
+        t_tokens = set(re.findall(r"[a-zà-ÿ0-9']+", title))
+        if q_tokens and len(q_tokens & t_tokens) < max(2, len(q_tokens) // 2):
+            continue
+        if ("women" in t_tokens or "women's" in title) != ("women" in q_tokens):
             continue
         info = (page.get("imageinfo") or [{}])[0]
         meta = info.get("extmetadata") or {}
