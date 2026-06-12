@@ -20,7 +20,8 @@ UA = {"User-Agent": "tffw-agent/1.0 (https://github.com/botdgit/TFFW)"}
 
 FREE_LICENSES = ("cc by", "cc-by", "cc0", "public domain", "pd")
 SKIP_TITLE_WORDS = ("logo", "crest", "badge", "kit ", "flag of", "map", "stadium plan",
-                    "poster", "illustration", "painting", "drawing", "cartoon", "statue")
+                    "poster", "illustration", "painting", "drawing", "cartoon", "statue",
+                    "soldier", "military", "army", "navy", "airmen", "marines")
 
 STOPWORDS = {
     "the", "a", "an", "after", "before", "with", "over", "for", "and", "as",
@@ -70,9 +71,11 @@ def entity_from_headline(headline: str) -> str | None:
     return queries[0] if queries else None
 
 
-def find_photo(query: str) -> dict | None:
+def find_photo(query: str, modern: bool = False) -> dict | None:
     """Search Commons for a freely licensed photo. Returns metadata dict
-    or None when nothing suitably licensed/sized is found."""
+    or None when nothing suitably licensed/sized is found. With modern=True,
+    photos whose titles carry a pre-2015 year are skipped (keeps archival
+    shots out of current-match content)."""
     try:
         resp = requests.get(
             API,
@@ -98,6 +101,10 @@ def find_photo(query: str) -> dict | None:
         title = (page.get("title") or "").lower()
         if any(w in title for w in SKIP_TITLE_WORDS):
             continue
+        if modern:
+            years = [int(y) for y in re.findall(r"\b(18\d{2}|19\d{2}|20\d{2})\b", title)]
+            if years and max(years) < 2015:
+                continue
         # relevance guard: the photo title must actually be about the
         # queried subject, and never silently swap men's/women's teams
         t_tokens = set(re.findall(r"[a-zà-ÿ0-9']+", title))
@@ -169,4 +176,4 @@ def download(photo: dict, dest_name: str) -> str | None:
 
 
 def _strip_html(text: str) -> str:
-    return re.sub(r"<[^>]+>", "", text).strip()
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", text)).strip()
