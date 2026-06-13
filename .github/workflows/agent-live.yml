@@ -33,6 +33,7 @@ jobs:
           FOOTBALL_DATA_TOKEN: ${{ secrets.FOOTBALL_DATA_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           BUFFER_ACCESS_TOKEN: ${{ secrets.BUFFER_ACCESS_TOKEN }}
+          PUBLISH_ROLE: backstop
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
           IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
           BUFFER_CHANNEL_ID: ${{ vars.BUFFER_CHANNEL_ID || '6a2c2db338b55793458b2052' }}
@@ -40,6 +41,7 @@ jobs:
           DRY_RUN: ${{ vars.DRY_RUN || 'false' }}
           COMPETITIONS: ${{ vars.COMPETITIONS || 'PL,CL,WC' }}
         run: |
+          echo "buffer secret present: ${BUFFER_ACCESS_TOKEN:+yes} (len ${#BUFFER_ACCESS_TOKEN})"
           python -m tffw.main live
           python -m tffw.main publish
 

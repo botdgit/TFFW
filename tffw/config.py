@@ -99,6 +99,11 @@ BUFFER_BACKOFF_H = _float("BUFFER_BACKOFF_H", 3.0)
 # (Buffer free = 50). Hold a margin, and reserve most of it for live events.
 DAILY_SEND_LIMIT = _int("DAILY_SEND_LIMIT", 45)
 NEWS_SEND_LIMIT = _int("NEWS_SEND_LIMIT", 6)
+# Two publishers can run: the session loop (low latency, "primary") and the
+# GitHub Actions cron ("backstop"). The backstop only publishes when the
+# primary has gone silent, so they never double-post the same queue.
+PUBLISH_ROLE = os.environ.get("PUBLISH_ROLE", "primary").strip().lower()
+LOOP_PULSE_STALE_S = _int("LOOP_PULSE_STALE_S", 900)
 
 # ── Brand ───────────────────────────────────────────────────────────────
 BRAND_HANDLE = os.environ.get("BRAND_HANDLE", "@thefootballfinalwhistle")

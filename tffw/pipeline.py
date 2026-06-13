@@ -352,6 +352,26 @@ def run_publish() -> None:
         log.info("publish: paused via data/PUBLISH_PAUSED")
         return
 
+    # Two-publisher coordination: the low-latency session loop is "primary"
+    # and marks itself alive each cycle; the Actions cron is "backstop" and
+    # only publishes when the primary has gone silent. This stops the two
+    # from double-posting the same queue.
+    pulse = config.DATA_DIR / "loop_pulse"
+    if config.PUBLISH_ROLE == "primary":
+        try:  # coarse (5-min) so the marker only churns a commit occasionally
+            pulse.write_text(str(int(time.time()) // 300 * 300))
+        except OSError:
+            pass
+    else:
+        try:
+            age = time.time() - int(pulse.read_text().strip() or 0)
+        except (OSError, ValueError):
+            age = 1e9
+        if age < config.LOOP_PULSE_STALE_S:
+            log.info("publish: primary loop active (%.0fs ago) — backstop standing down", age)
+            return
+        log.info("publish: primary loop silent (%.0fs) — backstop taking over", age)
+
     # Publisher daily-limit backoff: when Buffer reports its free-plan cap,
     # a marker is dropped; hold off until the allowance window resets rather
     # than hammering the API every cycle. Auto-clears after BUFFER_BACKOFF_H.
