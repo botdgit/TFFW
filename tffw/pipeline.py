@@ -406,17 +406,16 @@ def _publish_one(post: dict) -> None:
         db.log_error("publish", f"post {post['id']}: no public image URL")
         return
 
-    # publish as a reel when an animated version exists (Buffer backend only)
+    # publish as a reel when an animated version exists (both backends)
     video_url = None
-    if config.PUBLISHER == "buffer" and (config.MEDIA_DIR / f"post_{post['id']}.mp4").exists():
+    if (config.MEDIA_DIR / f"post_{post['id']}.mp4").exists():
         video_url = config.media_public_url(f"post_{post['id']}.mp4")
 
-    external_id = backend.publish(post["caption"], image_url, post["alt_text"], video_url=video_url) \
-        if config.PUBLISHER == "buffer" else backend.publish(post["caption"], image_url, post["alt_text"])
+    external_id = backend.publish(post["caption"], image_url, post["alt_text"], video_url=video_url)
 
     # companion story card for match moments
     story_file = config.MEDIA_DIR / f"story_{post['id']}.png"
-    if external_id and config.PUBLISHER == "buffer" and story_file.exists():
+    if external_id and story_file.exists():
         backend.publish_story(config.media_public_url(story_file.name))
     if external_id:
         db.update_post(
