@@ -460,9 +460,14 @@ def _publish_one(post: dict) -> int:
         what = "story"
     else:
         # feed post — a reel when an animated version exists
-        video_url = None
-        if (config.MEDIA_DIR / f"post_{post['id']}.mp4").exists():
-            video_url = config.media_public_url(f"post_{post['id']}.mp4")
+        video_file = config.MEDIA_DIR / f"post_{post['id']}.mp4"
+        # a recap's whole value is the voiced reel: never let it post as a
+        # flat image because the video is still rendering — wait a cycle.
+        is_recap = post["format"] == "FINAL WHISTLE" and (post["headline"] or "").upper().startswith("RECAP")
+        if is_recap and not video_file.exists():
+            log.info("publish: recap #%d video not ready — holding for reel", post["id"])
+            return 0
+        video_url = config.media_public_url(video_file.name) if video_file.exists() else None
         external_id = backend.publish(post["caption"], image_url, post["alt_text"], video_url=video_url)
         what = "post"
 
