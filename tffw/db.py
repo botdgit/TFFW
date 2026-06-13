@@ -287,6 +287,23 @@ def expire_stale_news(hours: float) -> int:
         return cur.rowcount
 
 
+def record_send(post_id: int, *, live: bool, what: str = "post") -> None:
+    """Log one publish against the rolling-window budget. Buffer/Instagram
+    count posts, reels AND stories toward the 24h limit, so every send is
+    recorded — keyed so the same send is never counted twice."""
+    record_event("send", f"send:{post_id}:{what}:{now_iso()}",
+                 {"live": live, "what": what, "post": post_id}, config.PUBLISHER)
+
+
+def sends_last_24h(live_only: bool | None = None) -> int:
+    """Count publishes in the trailing 24h. live_only=False counts only
+    non-live (news) sends; True counts only live; None counts everything."""
+    evts = recent_events("send", 24)
+    if live_only is None:
+        return len(evts)
+    return sum(1 for e in evts if bool(e["payload"].get("live")) == live_only)
+
+
 def published_count_today() -> int:
     start = datetime.now(timezone.utc).strftime("%Y-%m-%dT00:00:00")
     with connect() as conn:

@@ -372,10 +372,16 @@ def run_publish() -> None:
     if expired:
         log.info("publish: expired %d stale queued post(s)", expired)
 
-    # Daily cap — live match moments are exempt (a goal must always post)
-    cap_hit = db.published_count_today() >= config.MAX_POSTS_PER_DAY
-    if cap_hit:
-        log.info("publish: daily cap reached (%d) — live posts only", config.MAX_POSTS_PER_DAY)
+    # Rolling 24h send budget — Buffer counts posts, reels AND stories within
+    # any 24h window (limit 50; we hold a margin). Live match commentary is
+    # the priority, so news gets only a small slice and the rest stays free
+    # for live events.
+    sends_24h = db.sends_last_24h()
+    if sends_24h >= config.DAILY_SEND_LIMIT:
+        log.info("publish: 24h send budget reached (%d/%d) — holding", sends_24h, config.DAILY_SEND_LIMIT)
+        return
+    budget = config.DAILY_SEND_LIMIT - sends_24h
+    news_24h = db.sends_last_24h(live_only=False)
 
     # Spacing between posts — live match moments bypass the gate. Non-live
     # posts go at most ONE per run (shareNow posts immediately; the loop
@@ -387,24 +393,49 @@ def run_publish() -> None:
 
     published_news = 0
     for post in db.due_posts(config.MAX_POSTS_PER_RUN):
+        if budget <= 0:
+            break
         is_live = post["format"] in ("LIVE WHISTLE", "FINAL WHISTLE")
-        if not is_live and (cap_hit or not gap_ok or published_news >= 1):
-            log.info("publish: pacing holds #%d", post["id"])
-            continue
-        _publish_one(post)
         if not is_live:
+            # only a few of the highest-confidence breaking items per day;
+            # the feed stays focused on live events, not dated news
+            if news_24h + published_news >= config.NEWS_SEND_LIMIT:
+                log.info("publish: news budget reached (%d) — reserving for live", config.NEWS_SEND_LIMIT)
+                continue
+            if not gap_ok or published_news >= 1:
+                log.info("publish: pacing holds #%d", post["id"])
+                continue
+        sent = _publish_one(post)
+        budget -= sent
+        if not is_live and sent:
             published_news += 1
 
 
-def _publish_one(post: dict) -> None:
+def _route(post: dict) -> str:
+    """Where a post goes: live match commentary → Instagram Stories; the
+    voiced recap reel and significant breaking news → the feed."""
+    fmt = post["format"]
+    headline = (post["headline"] or "").upper()
+    if fmt == "FINAL WHISTLE" and headline.startswith("RECAP"):
+        return "feed"      # the match recap reel
+    if fmt in ("LIVE WHISTLE", "FINAL WHISTLE"):
+        return "story"     # live commentary (kick-off, goals, cards, FT result)
+    return "feed"          # breaking news
+
+
+def _publish_one(post: dict) -> int:
+    """Publish one queued item; returns the number of sends it consumed
+    (each post, reel or story counts as one against the 24h budget)."""
     image_name = (post["image_path"] or "").split("/")[-1]
     image_url = config.media_public_url(image_name) if image_name else ""
     db.update_post(post["id"], image_url=image_url)
+    is_live = post["format"] in ("LIVE WHISTLE", "FINAL WHISTLE")
+    route = _route(post)
 
     if config.DRY_RUN:
         db.update_post(post["id"], status="dry_run", published_at=db.now_iso())
-        log.info("DRY RUN — would publish #%d [%s] %s", post["id"], post["format"], post["headline"])
-        return
+        log.info("DRY RUN — would publish #%d [%s] as %s", post["id"], post["format"], route)
+        return 1
 
     if config.PUBLISHER == "buffer":
         from .publish import buffer_api as backend
@@ -412,33 +443,37 @@ def _publish_one(post: dict) -> None:
         from .publish import instagram_graph as backend
     else:
         log.info("publish: PUBLISHER=none, leaving #%d queued", post["id"])
-        return
+        return 0
 
     if not backend.configured():
         log.warning("publish: %s not configured, leaving #%d queued", config.PUBLISHER, post["id"])
-        return
+        return 0
     if not image_url:
         db.log_error("publish", f"post {post['id']}: no public image URL")
-        return
+        return 0
 
-    # publish as a reel when an animated version exists (both backends)
-    video_url = None
-    if (config.MEDIA_DIR / f"post_{post['id']}.mp4").exists():
-        video_url = config.media_public_url(f"post_{post['id']}.mp4")
+    if route == "story":
+        # live commentary as a 9:16 story card (fall back to the feed image)
+        story_file = config.MEDIA_DIR / f"story_{post['id']}.png"
+        story_url = config.media_public_url(story_file.name) if story_file.exists() else image_url
+        external_id = backend.publish_story(story_url)
+        what = "story"
+    else:
+        # feed post — a reel when an animated version exists
+        video_url = None
+        if (config.MEDIA_DIR / f"post_{post['id']}.mp4").exists():
+            video_url = config.media_public_url(f"post_{post['id']}.mp4")
+        external_id = backend.publish(post["caption"], image_url, post["alt_text"], video_url=video_url)
+        what = "post"
 
-    external_id = backend.publish(post["caption"], image_url, post["alt_text"], video_url=video_url)
-
-    # companion story card for match moments (disabled while conserving a
-    # capped publisher allowance — each story is another post against it)
-    story_file = config.MEDIA_DIR / f"story_{post['id']}.png"
-    if external_id and config.COMPANION_STORIES and story_file.exists():
-        backend.publish_story(config.media_public_url(story_file.name))
     if external_id:
         db.update_post(
             post["id"], status="published", published_at=db.now_iso(), external_id=str(external_id)
         )
         db.ledger_mark(post["id"], str(external_id))
-        log.info("PUBLISHED #%d via %s -> %s", post["id"], config.PUBLISHER, external_id)
-    else:
-        db.update_post(post["id"], status="failed")
-        db.log_error("publish", f"post {post['id']} failed via {config.PUBLISHER}")
+        db.record_send(post["id"], live=is_live, what=what)
+        log.info("PUBLISHED #%d via %s as %s -> %s", post["id"], config.PUBLISHER, route, external_id)
+        return 1
+    # left queued on failure (transient cap/error) — retried next cycle,
+    # and expired by the staleness sweep if it never succeeds
+    return 0

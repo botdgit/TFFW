@@ -20,8 +20,11 @@ from ..logger import get_logger
 log = get_logger("voice")
 
 ELEVEN_KEY = os.environ.get("ELEVENLABS_API_KEY", "")
-ELEVEN_VOICE = os.environ.get("ELEVENLABS_VOICE_ID", "lUTamkMw7gOzZbFIwmq4")
-EDGE_VOICE = os.environ.get("EDGE_TTS_VOICE", "en-GB-RyanNeural")
+# American woman presenter. ElevenLabs "Rachel" (a default US female voice)
+# when the paid plan is active; Microsoft Aria (US female, newscast tone) on
+# the free edge-tts fallback that actually runs from cloud runners.
+ELEVEN_VOICE = os.environ.get("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
+EDGE_VOICE = os.environ.get("EDGE_TTS_VOICE", "en-US-AriaNeural")
 
 
 def tts(text: str, out_path) -> bool:

@@ -95,6 +95,10 @@ MAX_POSTS_PER_DAY = _int("MAX_POSTS_PER_DAY", 60)
 PUBLISH_STALE_HOURS = _float("PUBLISH_STALE_HOURS", 6.0)
 # how long to stop publishing after a publisher reports its daily limit
 BUFFER_BACKOFF_H = _float("BUFFER_BACKOFF_H", 3.0)
+# Buffer/Instagram count posts + reels + stories toward a rolling 24h limit
+# (Buffer free = 50). Hold a margin, and reserve most of it for live events.
+DAILY_SEND_LIMIT = _int("DAILY_SEND_LIMIT", 45)
+NEWS_SEND_LIMIT = _int("NEWS_SEND_LIMIT", 6)
 
 # ── Brand ───────────────────────────────────────────────────────────────
 BRAND_HANDLE = os.environ.get("BRAND_HANDLE", "@thefootballfinalwhistle")
