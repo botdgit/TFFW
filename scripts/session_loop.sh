@@ -56,9 +56,14 @@ while true; do
     fi
   fi
 
-  # periodic heartbeat so health checks happen even when nothing is due
-  if [ $((i % 180)) -eq 1 ]; then
-    echo "TFFW heartbeat: cycle $i — check GitHub Actions runs for agent-live/news/digest are green"
+  # periodic heartbeat (wall-clock gated, not cycle-gated, so re-arming the
+  # loop does not re-trigger it). Emit at most once every ~6h.
+  hb=/tmp/tffw_heartbeat
+  now=$(date -u +%s)
+  last=$(cat "$hb" 2>/dev/null || echo 0)
+  if [ $((now - last)) -ge 21600 ]; then
+    echo "$now" > "$hb"
+    echo "TFFW heartbeat — check GitHub Actions runs for agent-live/news/digest are green"
   fi
 
   # fast mode while a match is live: 20s polling instead of 2 minutes
