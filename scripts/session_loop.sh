@@ -58,7 +58,7 @@ while true; do
 
   # periodic heartbeat (wall-clock gated, not cycle-gated, so re-arming the
   # loop does not re-trigger it). Emit at most once every ~6h.
-  hb=/tmp/tffw_heartbeat
+  hb=data/.heartbeat_ts  # in-repo + gitignored so it survives /tmp wipes
   now=$(date -u +%s)
   last=$(cat "$hb" 2>/dev/null || echo 0)
   if [ $((now - last)) -ge 21600 ]; then

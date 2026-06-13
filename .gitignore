@@ -15,3 +15,4 @@ venv/
 
 # transient fast-mode marker (state, not content)
 data/LIVE_MATCH
+data/.heartbeat_ts
