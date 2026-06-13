@@ -8,6 +8,7 @@ BUFFER_GRAPHQL_URL if Buffer moves it.
 """
 
 import os
+import time
 
 from .. import config, db
 from ..http_client import request
@@ -99,6 +100,15 @@ def publish(caption: str, image_url: str, alt_text: str, video_url: str | None =
     message = result.get("message") or str(payload.get("errors", payload))[:300]
     db.log_error("buffer", f"createPost failed: {message}")
     log.error("buffer createPost failed: %s", message)
+    # Buffer's free plan rejects once the daily channel limit is reached.
+    # Drop a backoff marker so the queue stops thrashing the API until the
+    # allowance resets (publishing resumes automatically after the window).
+    if "limit" in message.lower():
+        try:
+            (config.DATA_DIR / "BUFFER_CAPPED").write_text(str(int(time.time())))
+            log.warning("buffer: daily limit reached — backing off")
+        except OSError:
+            pass
     return None
 
 

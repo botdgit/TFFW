@@ -86,12 +86,15 @@ IG_ACCESS_TOKEN = os.environ.get("IG_ACCESS_TOKEN", "")
 MEDIA_BASE_URL = os.environ.get("MEDIA_BASE_URL", "")
 
 REELS_ENABLED = _bool("REELS_ENABLED", True)
+COMPANION_STORIES = _bool("COMPANION_STORIES", True)
 MAX_POSTS_PER_RUN = _int("MAX_POSTS_PER_RUN", 5)
 MIN_MINUTES_BETWEEN_POSTS = _int("MIN_MINUTES_BETWEEN_POSTS", 5)
 MAX_POSTS_PER_DAY = _int("MAX_POSTS_PER_DAY", 60)
 # queued news older than this (e.g. after a publishing outage) is expired
 # rather than posted, so the feed never floods with stale "breaking" news
 PUBLISH_STALE_HOURS = _float("PUBLISH_STALE_HOURS", 6.0)
+# how long to stop publishing after a publisher reports its daily limit
+BUFFER_BACKOFF_H = _float("BUFFER_BACKOFF_H", 3.0)
 
 # ── Brand ───────────────────────────────────────────────────────────────
 BRAND_HANDLE = os.environ.get("BRAND_HANDLE", "@thefootballfinalwhistle")

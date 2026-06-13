@@ -7,6 +7,7 @@ Modes (invoked by the GitHub Actions schedules via tffw.main):
   publish  — flush due queue items through the configured publisher
 """
 
+import time
 from datetime import datetime, timedelta, timezone
 
 from . import config, db, verification
@@ -351,6 +352,20 @@ def run_publish() -> None:
         log.info("publish: paused via data/PUBLISH_PAUSED")
         return
 
+    # Publisher daily-limit backoff: when Buffer reports its free-plan cap,
+    # a marker is dropped; hold off until the allowance window resets rather
+    # than hammering the API every cycle. Auto-clears after BUFFER_BACKOFF_H.
+    cap_marker = config.DATA_DIR / "BUFFER_CAPPED"
+    if cap_marker.exists():
+        try:
+            since = time.time() - int(cap_marker.read_text().strip() or 0)
+        except (OSError, ValueError):
+            since = 1e9
+        if since < config.BUFFER_BACKOFF_H * 3600:
+            log.info("publish: holding off — publisher daily limit reached (%.1fh ago)", since / 3600)
+            return
+        cap_marker.unlink(missing_ok=True)  # window elapsed, try again
+
     # Drop stale news first: if publishing stalled (outage, dead loop), the
     # backlog is no longer timely and must not flood out as fake "breaking".
     expired = db.expire_stale_news(config.PUBLISH_STALE_HOURS)
@@ -413,9 +428,10 @@ def _publish_one(post: dict) -> None:
 
     external_id = backend.publish(post["caption"], image_url, post["alt_text"], video_url=video_url)
 
-    # companion story card for match moments
+    # companion story card for match moments (disabled while conserving a
+    # capped publisher allowance — each story is another post against it)
     story_file = config.MEDIA_DIR / f"story_{post['id']}.png"
-    if external_id and story_file.exists():
+    if external_id and config.COMPANION_STORIES and story_file.exists():
         backend.publish_story(config.media_public_url(story_file.name))
     if external_id:
         db.update_post(
