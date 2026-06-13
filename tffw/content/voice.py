@@ -112,13 +112,27 @@ def build_recap_script(facts: dict) -> str:
         h, a = (h + 1, a) if is_home else (h, a + 1)
         home_trailed, away_trailed = home_trailed or h < a, away_trailed or a < h
         mn = minute_n(sc)
-        when = f"in the {_minute_words(mn)} minute" if mn else "in the second half"
+        stoppage = mn >= 90 or "+" in (sc.get("minute") or "")
+        if stoppage:
+            when = "deep in stoppage time"
+        elif mn:
+            when = f"in the {_minute_words(mn)} minute"
+        else:
+            when = "in the second half"
         pen = " from the penalty spot" if sc.get("pen") else ""
-        lead = "Deep into the closing stages, " if mn >= 85 else ""
+        lead = "Deep into the second half, " if 75 <= mn < 90 else ""
 
         if sc.get("og"):
-            verb = f"An own goal gifted {team} {'the opener' if i == 0 else 'another'}"
-            lines.append(f"{lead}{verb} {when}." if not lead else f"{lead}{verb[0].lower()}{verb[1:]} {when}.")
+            if i == 0:
+                og = f"an own goal handed {team} the lead"
+            elif h == a:
+                og = f"an own goal dragged {team} level"
+            elif (h > a) == is_home:
+                og = f"an own goal put {team} ahead"
+            else:
+                og = f"an own goal pulled {team} back into it"
+            clause = f"{lead}{og} {when}."
+            lines.append(clause[0].upper() + clause[1:])
             continue
         # narrate surnames the way a commentator would ("Lukic", not "J. Lukic")
         name = re.sub(r"^[A-Z]\.\s*", "", sc["name"])
@@ -132,7 +146,8 @@ def build_recap_script(facts: dict) -> str:
             phrase = f"{name} stretched the lead for {team}{pen} {when}"
         else:
             phrase = f"{name} pulled one back for {team}{pen} {when}"
-        lines.append(f"{lead}{phrase}.")
+        clause = f"{lead}{phrase}."
+        lines.append(clause[0].upper() + clause[1:])
 
     if hs is not None and as_ is not None:
         if hs == as_ == 0:
