@@ -351,6 +351,12 @@ def run_publish() -> None:
         log.info("publish: paused via data/PUBLISH_PAUSED")
         return
 
+    # Drop stale news first: if publishing stalled (outage, dead loop), the
+    # backlog is no longer timely and must not flood out as fake "breaking".
+    expired = db.expire_stale_news(config.PUBLISH_STALE_HOURS)
+    if expired:
+        log.info("publish: expired %d stale queued post(s)", expired)
+
     # Daily cap — live match moments are exempt (a goal must always post)
     cap_hit = db.published_count_today() >= config.MAX_POSTS_PER_DAY
     if cap_hit:

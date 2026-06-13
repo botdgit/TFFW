@@ -262,8 +262,29 @@ def last_publish_time() -> datetime | None:
             "SELECT MAX(published_at) AS last FROM posts WHERE status IN ('published','dry_run')"
         ).fetchone()
     if row and row["last"]:
-        return datetime.fromisoformat(row["last"])
+        ts = datetime.fromisoformat(row["last"])
+        # older rows may have stored a naive timestamp — treat as UTC so
+        # arithmetic against tz-aware now() never raises
+        return ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
     return None
+
+
+def expire_stale_news(hours: float) -> int:
+    """Mark queued, non-live posts older than `hours` as expired. Time-
+    sensitive news that has sat unpublished through an outage is no longer
+    news; this stops a backlog flooding out as stale 'BREAKING' when
+    publishing resumes. Live/full-time match moments are never expired here
+    (run_live already scopes them to recent matches). Returns count expired."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat(timespec="seconds")
+    with connect() as conn:
+        cur = conn.execute(
+            "UPDATE posts SET status = 'expired' "
+            "WHERE status = 'queued' "
+            "AND format NOT IN ('LIVE WHISTLE','FINAL WHISTLE') "
+            "AND COALESCE(scheduled_for, created_at) < ?",
+            (cutoff,),
+        )
+        return cur.rowcount
 
 
 def published_count_today() -> int:

@@ -89,6 +89,9 @@ REELS_ENABLED = _bool("REELS_ENABLED", True)
 MAX_POSTS_PER_RUN = _int("MAX_POSTS_PER_RUN", 5)
 MIN_MINUTES_BETWEEN_POSTS = _int("MIN_MINUTES_BETWEEN_POSTS", 5)
 MAX_POSTS_PER_DAY = _int("MAX_POSTS_PER_DAY", 60)
+# queued news older than this (e.g. after a publishing outage) is expired
+# rather than posted, so the feed never floods with stale "breaking" news
+PUBLISH_STALE_HOURS = _float("PUBLISH_STALE_HOURS", 6.0)
 
 # ── Brand ───────────────────────────────────────────────────────────────
 BRAND_HANDLE = os.environ.get("BRAND_HANDLE", "@thefootballfinalwhistle")
