@@ -976,11 +976,12 @@ def _table(fmt: str, facts: dict) -> Image.Image:
     rtext(gd_r, hy, "GD", fhead, "#5E7A52")
     rtext(pts_r, hy, "PTS", fhead, "#5E7A52")
 
+    advance = facts.get("advance_places", 4)  # CL top-4 by default; WC groups = 2
     y = card_y0 + 70
     for i, r in enumerate(rows):
         if i % 2 == 1:
             draw.rectangle([card_x0 + 14, y - 4, card_x1 - 14, y + row_h - 12], fill="#E8F2DF")
-        if r["position"] <= 4:  # CL places marker
+        if r["position"] <= advance:  # qualification/advancement marker
             draw.rectangle([card_x0 + 14, y - 4, card_x0 + 22, y + row_h - 12], fill=GREEN)
         draw.text((pos_x, y), str(r["position"]), font=frow, fill=INK)
         draw.text((team_x, y), str(r["team"])[:22].upper(), font=frow, fill=INK)

@@ -112,6 +112,35 @@ def publish(caption: str, image_url: str, alt_text: str, video_url: str | None =
     return None
 
 
+def publish_carousel(caption: str, image_urls: list[str], alt_text: str = "") -> str | None:
+    """Publish a multi-image carousel (e.g. group standings). Returns the
+    Buffer post id or None."""
+    assets = [{"image": {"url": u, "metadata": {"altText": alt_text}}} for u in image_urls[:10]]
+    variables = {
+        "input": {
+            "channelId": config.BUFFER_CHANNEL_ID,
+            "schedulingType": "automatic",
+            "mode": "shareNow",
+            "text": caption,
+            "assets": assets,
+            "metadata": {"instagram": {"type": "post", "shouldShareToFeed": True}},
+            "source": "tffw-agent",
+        }
+    }
+    resp = request(
+        "buffer", "POST", GRAPHQL_URL,
+        headers={"Authorization": f"Bearer {config.BUFFER_ACCESS_TOKEN}", "Content-Type": "application/json"},
+        json_body={"query": CREATE_POST, "variables": variables},
+    )
+    if resp is None:
+        return None
+    result = (resp.json().get("data") or {}).get("createPost") or {}
+    if result.get("__typename") == "PostActionSuccess":
+        return result["post"]["id"]
+    db.log_error("buffer", f"carousel failed: {result.get('message', '?')}")
+    return None
+
+
 def publish_story(image_url: str) -> str | None:
     """Post a 9:16 card to Instagram Stories."""
     variables = {

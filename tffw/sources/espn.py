@@ -82,3 +82,42 @@ def todays_matches() -> list[dict]:
                 }
             )
     return out
+
+
+STANDINGS_URL = "https://site.api.espn.com/apis/v2/sports/soccer/{code}/standings"
+
+
+def standings(code: str = "fifa.world") -> list[dict]:
+    """World Cup group tables. Returns a list of groups, each with ordered
+    rows: {rank, team, played, win, draw, loss, gd, points}. Only groups
+    that have played at least one game are returned."""
+    data = get_json("espn", STANDINGS_URL.format(code=code))
+    if not data:
+        return []
+    groups = []
+    for child in data.get("children", []):
+        rows = []
+        for e in ((child.get("standings") or {}).get("entries") or []):
+            stat = {s.get("abbreviation"): s.get("displayValue") for s in e.get("stats", [])}
+            played = _to_int(stat.get("GP"))
+            rows.append({
+                "rank": _to_int(stat.get("R")),
+                "team": (e.get("team") or {}).get("displayName", "?"),
+                "played": played,
+                "win": _to_int(stat.get("W")),
+                "draw": _to_int(stat.get("D")),
+                "loss": _to_int(stat.get("L")),
+                "gd": stat.get("GD", "0"),
+                "points": _to_int(stat.get("P")),
+            })
+        if any(r["played"] for r in rows):
+            rows.sort(key=lambda r: r["rank"] or 99)
+            groups.append({"name": child.get("name", ""), "rows": rows})
+    return groups
+
+
+def _to_int(value) -> int:
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return 0
