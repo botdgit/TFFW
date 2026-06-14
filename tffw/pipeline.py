@@ -167,6 +167,7 @@ def run_live() -> None:
             "home_score": m["home_score"],
             "away_score": m["away_score"],
             "reds": len(reds),
+            "goals": len(scorers),
         }
         if {k: prev.get(k) for k in cur} == cur:
             continue
@@ -206,18 +207,30 @@ def run_live() -> None:
                 [{"domain": m["source"], "title": "official match feed"}],
             )
 
-        # Goal / score change while in play
-        elif m["status"] in ("IN_PLAY", "PAUSED", "LIVE") and (
-            prev.get("home_score") is not None
-            and (cur["home_score"], cur["away_score"]) != (prev.get("home_score"), prev.get("away_score"))
-        ):
-            latest = scorers[-1] if scorers else {}
-            scorer_tag = f" — {latest.get('name')} {latest.get('minute')}" if latest.get("name") else ""
+        # Goals while in play — ONE story per new scorer since we last looked
+        # (a 0-0 → 2-1 jump between polls must post all three goals, not one).
+        elif m["status"] in ("IN_PLAY", "PAUSED", "LIVE") and "goals" in prev \
+                and len(scorers) > prev.get("goals", 0):
+            for j in range(prev.get("goals", 0) + 1, len(scorers) + 1):
+                sc = scorers[j - 1]
+                h = sum(1 for s in scorers[:j] if s.get("side") == "home")
+                a = sum(1 for s in scorers[:j] if s.get("side") == "away")
+                tag = f" — {sc.get('name')} {sc.get('minute')}" if sc.get("name") else ""
+                _queue(
+                    "LIVE WHISTLE",
+                    f"GOAL: {m['home']} {h}-{a} {m['away']}{tag}",
+                    {**base_facts, "event": "goal", "status_label": "LIVE",
+                     "home_score": h, "away_score": a, "goal_scorer": sc},
+                    verification.score_live_update(),
+                    [{"domain": m["source"], "title": "official match feed"}],
+                )
+        # score moved but the feed gave us no scorer breakdown — one generic card
+        elif m["status"] in ("IN_PLAY", "PAUSED", "LIVE") and prev.get("home_score") is not None \
+                and (cur["home_score"], cur["away_score"]) != (prev.get("home_score"), prev.get("away_score")):
             _queue(
                 "LIVE WHISTLE",
-                f"GOAL: {m['home']} {m['home_score']}-{m['away_score']} {m['away']}{scorer_tag}",
-                {**base_facts, "event": "goal", "status_label": "LIVE",
-                 "goal_scorer": latest},
+                f"GOAL: {m['home']} {m['home_score']}-{m['away_score']} {m['away']}",
+                {**base_facts, "event": "goal", "status_label": "LIVE", "goal_scorer": {}},
                 verification.score_live_update(),
                 [{"domain": m["source"], "title": "official match feed"}],
             )
