@@ -502,11 +502,14 @@ def _fixtures(fmt: str, facts: dict) -> Image.Image:
 # ── stories (9:16 static cards) ─────────────────────────────────────────
 
 def render_story(post_id: int, fmt: str, facts: dict) -> Path | None:
-    """1080x1920 story card. Match formats reuse the reel composition's
-    final frame; headline formats get a centered story layout."""
+    """1080x1920 story card. Goal/red-card moments get a punchy event layout
+    (the high-engagement live content); other match formats reuse the reel
+    composition's final frame; headline formats get a centered layout."""
     try:
         if facts.get("fixture_rows"):
             img = _story_fixtures(fmt, facts)
+        elif facts.get("event") in ("goal", "red_card") and facts.get("home"):
+            img = _story_event(fmt, facts)
         elif facts.get("home"):
             img = _reel_frame(_reel_background(), 1.0, fmt, facts)
         else:
@@ -518,6 +521,69 @@ def render_story(post_id: int, fmt: str, facts: dict) -> Path | None:
     except Exception as exc:
         log.warning("story render failed: %s", exc)
         return None
+
+
+def _story_event(fmt: str, facts: dict) -> Image.Image:
+    """Goal / red-card moment, 9:16 — the live-commentary hero card: big
+    event tag, scorer, minute and the running score."""
+    img = _reel_background()
+    draw = ImageDraw.Draw(img)
+    badge = _logo_white(170)
+    if badge is not None:
+        img.paste(badge, ((RW - badge.width) // 2, 150), badge)
+        draw = ImageDraw.Draw(img)
+
+    red = facts.get("event") == "red_card"
+    if red:
+        who = facts.get("red_card") or {}
+        team = facts.get("red_card_team") or ""
+        tag, tag_bg, tag_fg = "RED CARD", "#D33A2C", WHITE
+    else:
+        who = facts.get("goal_scorer") or {}
+        side = who.get("side")
+        team = facts.get("home") if side == "home" else (facts.get("away") if side == "away" else "")
+        tag = "OWN GOAL" if who.get("og") else ("PENALTY" if who.get("pen") else "GOAL")
+        tag_bg, tag_fg = GREEN, PITCH_BOTTOM
+
+    comp = (facts.get("competition") or "").upper()
+    if comp:
+        fc = meta(48)
+        cw = _tracked_width(draw, comp, fc, 10)
+        _tracked(draw, ((RW - cw) / 2, 430), comp, fc, META, 10)
+
+    f = label(56)
+    tw = _tracked_width(draw, tag, f, 8)
+    pad = 50
+    x0 = (RW - tw - pad * 2) / 2
+    draw.rounded_rectangle([x0, 560, x0 + tw + pad * 2, 672], radius=56, fill=tag_bg)
+    _tracked(draw, (x0 + pad, 588), tag, f, tag_fg, 8)
+
+    name = (who.get("name") or "").upper()
+    if name:
+        fh = _fit_display(draw, name, RW - 150, 130)
+        nw = draw.textlength(name, font=fh)
+        draw.text(((RW - nw) / 2, 800), name, font=fh, fill=WHITE)
+
+    sub = "  ·  ".join(p for p in [(team or "").upper(), (who.get("minute") or "").upper()] if p)
+    if sub:
+        fm = meta(56)
+        sw = _tracked_width(draw, sub, fm, 6)
+        _tracked(draw, ((RW - sw) / 2, 980), sub, fm, META, 6)
+
+    score = f"{facts.get('home_score', 0)} - {facts.get('away_score', 0)}"
+    fs = display(150)
+    sw = draw.textlength(score, font=fs)
+    draw.text(((RW - sw) / 2, 1120), score, font=fs, fill=GREEN_BRIGHT)
+    teams = f"{facts.get('home','')}  v  {facts.get('away','')}".upper()
+    ft = meta(44)
+    tw2 = _tracked_width(draw, teams, ft, 4)
+    _tracked(draw, ((RW - tw2) / 2, 1330), teams, ft, WHITE, 4)
+
+    f2 = meta(46)
+    cta = "FOLLOW FOR EVERY GOAL"
+    cw2 = _tracked_width(draw, cta, f2, 8)
+    _tracked(draw, ((RW - cw2) / 2, 1640), cta, f2, GREEN_BRIGHT, 8)
+    return img
 
 
 def _story_fixtures(fmt: str, facts: dict) -> Image.Image:
