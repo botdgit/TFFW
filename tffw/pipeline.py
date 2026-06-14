@@ -30,6 +30,15 @@ def _is_recent(utc_date: str, hours: int = 24) -> bool:
     return datetime.now(timezone.utc) - when < timedelta(hours=hours)
 
 
+def _parse_dt(value: str) -> datetime:
+    """Parse a stored timestamp to a tz-aware datetime (assume UTC if naive)."""
+    try:
+        dt = datetime.fromisoformat((value or "").replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return datetime.now(timezone.utc)
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
 def _queue(fmt: str, headline: str, facts: dict, confidence: float, sources: list) -> None:
     """Verification gate + content generation + queue insert (deduped)."""
     if confidence < config.MIN_CONFIDENCE:
@@ -352,25 +361,16 @@ def run_publish() -> None:
         log.info("publish: paused via data/PUBLISH_PAUSED")
         return
 
-    # Two-publisher coordination: the low-latency session loop is "primary"
-    # and marks itself alive each cycle; the Actions cron is "backstop" and
-    # only publishes when the primary has gone silent. This stops the two
-    # from double-posting the same queue.
-    pulse = config.DATA_DIR / "loop_pulse"
-    if config.PUBLISH_ROLE == "primary":
-        try:  # coarse (5-min) so the marker only churns a commit occasionally
-            pulse.write_text(str(int(time.time()) // 300 * 300))
-        except OSError:
-            pass
-    else:
-        try:
-            age = time.time() - int(pulse.read_text().strip() or 0)
-        except (OSError, ValueError):
-            age = 1e9
-        if age < config.LOOP_PULSE_STALE_S:
-            log.info("publish: primary loop active (%.0fs ago) — backstop standing down", age)
-            return
-        log.info("publish: primary loop silent (%.0fs) — backstop taking over", age)
+    # Two publishers run: the session loop (low latency, when a session is
+    # active) and the GitHub Actions cron (always on). BOTH publish — the
+    # published-ledger dedups, so we prioritise never-miss over the small
+    # chance of a duplicate. (A flapping "defer to primary" scheme silently
+    # dropped posts when the loop died, which is worse for a live feed.)
+    # Still record a pulse so we can tell from state whether a loop is alive.
+    try:
+        (config.DATA_DIR / "loop_pulse").write_text(str(int(time.time()) // 300 * 300))
+    except OSError:
+        pass
 
     # Publisher daily-limit backoff: when Buffer reports its free-plan cap,
     # a marker is dropped; hold off until the allowance window resets rather
@@ -481,12 +481,29 @@ def _publish_one(post: dict) -> int:
     else:
         # feed post — a reel when an animated version exists
         video_file = config.MEDIA_DIR / f"post_{post['id']}.mp4"
-        # a recap's whole value is the voiced reel: never let it post as a
-        # flat image because the video is still rendering — wait a cycle.
         is_recap = post["format"] == "FINAL WHISTLE" and (post["headline"] or "").upper().startswith("RECAP")
         if is_recap and not video_file.exists():
-            log.info("publish: recap #%d video not ready — holding for reel", post["id"])
-            return 0
+            # a recap's value is the voiced reel — render it on demand here
+            # (whichever publisher handles it), then hold ONE cycle: Buffer/IG
+            # fetch the video from the public repo URL, so it must be pushed
+            # before we can publish it. The next cycle publishes the reel.
+            age_min = (datetime.now(timezone.utc) - _parse_dt(post["scheduled_for"])).total_seconds() / 60
+            try:
+                from .content import recap, voice
+                recap.render_recap(post["id"], post["facts"], voice.build_recap_script(post["facts"]))
+            except Exception as exc:
+                db.log_error("publish", f"recap render #{post['id']}: {exc}")
+            if video_file.exists():
+                log.info("publish: rendered recap #%d — publishing next cycle once pushed", post["id"])
+                return 0
+            # rendering unavailable (e.g. cron runner can't do TTS): don't hold
+            # forever — after a short grace, post the static recap card.
+            if age_min < config.RECAP_RENDER_GRACE_MIN:
+                log.info("publish: recap #%d video not ready — retrying (%.0fm)", post["id"], age_min)
+                return 0
+            log.info("publish: recap #%d video unavailable — posting static card", post["id"])
+        # the reel must already be live on the CDN; if a fresh render hasn't
+        # propagated yet Buffer 404s, the post stays queued and retries.
         video_url = config.media_public_url(video_file.name) if video_file.exists() else None
         external_id = backend.publish(post["caption"], image_url, post["alt_text"], video_url=video_url)
         what = "post"

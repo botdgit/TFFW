@@ -104,6 +104,9 @@ NEWS_SEND_LIMIT = _int("NEWS_SEND_LIMIT", 6)
 # primary has gone silent, so they never double-post the same queue.
 PUBLISH_ROLE = os.environ.get("PUBLISH_ROLE", "primary").strip().lower()
 LOOP_PULSE_STALE_S = _int("LOOP_PULSE_STALE_S", 900)
+# a recap waits this long for its voiced reel to render; after that it posts
+# as a static card rather than getting stuck forever
+RECAP_RENDER_GRACE_MIN = _int("RECAP_RENDER_GRACE_MIN", 15)
 
 # ── Brand ───────────────────────────────────────────────────────────────
 BRAND_HANDLE = os.environ.get("BRAND_HANDLE", "@thefootballfinalwhistle")
