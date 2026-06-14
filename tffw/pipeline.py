@@ -112,7 +112,9 @@ def _near_duplicate(headline: str) -> bool:
 
 def _attach_photo(facts: dict, headline: str, claim_key: str) -> dict:
     """Best-effort licensed photo for a news story (never blocks posting).
-    Tries several subject queries: full name run, then individual names."""
+    Tries several subject queries: full name run, then individual names.
+    Falls back to a licensed stadium/football image so EVERY post has a
+    photo background — the brand's reel-first, image-led format."""
     try:
         for query in commons.entity_queries(headline):
             photo = commons.find_photo(query)
@@ -123,10 +125,18 @@ def _attach_photo(facts: dict, headline: str, claim_key: str) -> dict:
                 continue
             credit = f"PHOTO: {photo['artist']} / WIKIMEDIA COMMONS ({photo['license']})"
             return {**facts, "photo_path": rel, "photo_credit": credit}
-        return facts
     except Exception as exc:
         db.log_error("commons", f"attach_photo: {exc}")
-        return facts
+
+    # no subject photo — use a rotating licensed stadium/football background
+    # so the post is still image-led and can become a reel
+    backgrounds = sorted((config.ROOT / "assets" / "backgrounds").glob("stadium_*.jpg"))
+    if backgrounds:
+        import hashlib
+        idx = int(hashlib.sha256(claim_key.encode()).hexdigest(), 16) % len(backgrounds)
+        rel = str(backgrounds[idx].relative_to(config.ROOT))
+        return {**facts, "photo_path": rel, "photo_credit": "PHOTO: WIKIMEDIA COMMONS (CC0)"}
+    return facts
 
 
 # ── live match pipeline ─────────────────────────────────────────────────
