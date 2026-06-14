@@ -993,3 +993,107 @@ def _table(fmt: str, facts: dict) -> Image.Image:
 
     _footer(draw, facts.get("date_label", ""))
     return img
+
+
+def _standings_slide(title: str, subtitle: str, group: dict | None) -> Image.Image:
+    """A single 9:16 navy slide: cover (group=None) or a group table."""
+    img = _reel_background()
+    draw = ImageDraw.Draw(img)
+    badge = _logo_white(150)
+    if badge is not None:
+        img.paste(badge, ((RW - badge.width) // 2, 130), badge)
+        draw = ImageDraw.Draw(img)
+
+    f = label(46)
+    tw = _tracked_width(draw, title, f, 8)
+    pad = 48
+    x0 = (RW - tw - pad * 2) / 2
+    draw.rounded_rectangle([x0, 360, x0 + tw + pad * 2, 462], radius=50, fill=GREEN)
+    _tracked(draw, (x0 + pad, 386), title, f, PITCH_BOTTOM, 8)
+
+    if group is None:  # cover
+        fh = display(150)
+        for text, y in (("GROUP", 760), ("STANDINGS", 920)):
+            w = draw.textlength(text, font=fh)
+            draw.text(((RW - w) / 2, y), text, font=fh, fill=WHITE)
+        fc = meta(50)
+        cw = _tracked_width(draw, subtitle, fc, 8)
+        _tracked(draw, ((RW - cw) / 2, 1140), subtitle, fc, GREEN_BRIGHT, 8)
+        return img
+
+    fg = display(96)
+    gw = draw.textlength(group["name"].upper(), font=fg)
+    draw.text(((RW - gw) / 2, 560), group["name"].upper(), font=fg, fill=WHITE)
+
+    rows = group["rows"][:4]
+    card_x0, card_x1 = 90, RW - 90
+    card_y0, row_h = 760, 150
+    card_y1 = card_y0 + 90 + row_h * len(rows) + 30
+    draw.rounded_rectangle([card_x0, card_y0, card_x1, card_y1], radius=30, fill=CARD)
+
+    fhead, frow, fpts = label(30), meta(60), label(46)
+    pos_x, team_x = 150, 240
+    p_r, gd_r, pts_r = RW - 430, RW - 280, card_x1 - 60
+
+    def rtext(xr, y_, s, font, fill):
+        draw.text((xr - draw.textlength(s, font=font), y_), s, font=font, fill=fill)
+
+    hy = card_y0 + 34
+    draw.text((pos_x, hy), "#", font=fhead, fill="#6E84B0")
+    draw.text((team_x, hy), "TEAM", font=fhead, fill="#6E84B0")
+    rtext(p_r, hy, "P", fhead, "#6E84B0")
+    rtext(gd_r, hy, "GD", fhead, "#6E84B0")
+    rtext(pts_r, hy, "PTS", fhead, "#6E84B0")
+
+    y = card_y0 + 92
+    for i, r in enumerate(rows):
+        if i % 2 == 1:
+            draw.rectangle([card_x0 + 18, y - 6, card_x1 - 18, y + row_h - 18], fill="#E6EEF8")
+        if r["rank"] <= 2:  # top two advance
+            draw.rectangle([card_x0 + 18, y - 6, card_x0 + 30, y + row_h - 18], fill=GREEN)
+        draw.text((pos_x, y), str(r["rank"]), font=frow, fill=INK)
+        draw.text((team_x, y), str(r["team"])[:16].upper(), font=frow, fill=INK)
+        gd = r["gd"] if str(r["gd"]).startswith(("+", "-")) else f'+{r["gd"]}'
+        rtext(p_r, y, str(r["played"]), frow, INK)
+        rtext(gd_r, y, gd, frow, INK)
+        rtext(pts_r, y + 8, str(r["points"]), fpts, "#2E5AA0")
+        y += row_h
+
+    fcta = meta(46)
+    cta = "TOP TWO ADVANCE"
+    cw = _tracked_width(draw, cta, fcta, 8)
+    _tracked(draw, ((RW - cw) / 2, card_y1 + 70), cta, fcta, GREEN_BRIGHT, 8)
+    return img
+
+
+def render_standings_reel(post_id: int, groups: list[dict], subtitle: str = "THE GROUPS SO FAR") -> Path | None:
+    """Animated navy standings reel: cover + one table per group, crossfaded."""
+    import imageio.v2 as imageio
+    import numpy as np
+
+    slides = [_standings_slide("GROUP STANDINGS", subtitle, None)]
+    for grp in groups[:8]:
+        slides.append(_standings_slide("WORLD CUP 2026", subtitle, grp))
+    arrays = [np.asarray(s.convert("RGB")) for s in slides]
+
+    seg, fade = 2.6, 0.5
+    total = seg * len(arrays)
+    frames = int(total * FPS)
+    fade_n = max(1, int(fade * FPS))
+    out = config.MEDIA_DIR / f"post_{post_id}.mp4"
+    writer = imageio.get_writer(str(out), fps=FPS, codec="libx264", quality=7,
+                                macro_block_size=None, pixelformat="yuv420p")
+    try:
+        for i in range(frames):
+            t = i / FPS
+            idx = min(int(t / seg), len(arrays) - 1)
+            frame = arrays[idx]
+            into = t - idx * seg
+            if idx > 0 and into < fade:
+                a = into / fade
+                frame = (arrays[idx - 1] * (1 - a) + frame * a).astype("uint8")
+            writer.append_data(frame)
+    finally:
+        writer.close()
+    log.info("rendered standings reel -> %s (%.1fs)", out.name, total)
+    return out

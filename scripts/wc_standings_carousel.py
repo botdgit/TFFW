@@ -70,28 +70,33 @@ def main() -> int:
         print(json.dumps({"error": "no standings with games yet"}))
         return 0
 
-    slides = [render_cover(len(groups))]
-    for i, grp in enumerate(groups[:9], start=1):  # +cover stays within IG's 10
-        slides.append(render_group(i, grp))
-    rel = [str(p.relative_to(config.ROOT)) for p in slides]
+    # reel-first: an animated navy standings reel (cover + one table per group)
+    reel = g.render_standings_reel(0, groups)
+    reel_path = config.MEDIA_DIR / "wc_standings_reel.mp4"
+    thumb_path = config.MEDIA_DIR / "wc_standings_reel.png"
+    if reel.name != reel_path.name:
+        reel.replace(reel_path)
+    g._standings_slide("GROUP STANDINGS", "THE GROUPS SO FAR", None).save(thumb_path, "PNG", optimize=True)
+
     caption = (
         "📊 WORLD CUP 2026 — GROUP STANDINGS\n\n"
-        "How the groups look so far. "
-        "Top two advance. Swipe through to find your nation 👇\n\n"
+        "How the groups look so far 🔵 Top two advance. Where does your nation sit? 👇\n\n"
         "#FIFAWorldCup #WorldCup2026 #Standings #Football #Soccer #Groups"
     )
-    result = {"slides": rel, "groups": len(groups), "caption": caption}
+    result = {"reel": str(reel_path.relative_to(config.ROOT)), "groups": len(groups), "caption": caption}
 
     if "--post" in sys.argv:
-        for p in slides:
-            subprocess.run(["git", "add", str(p)], cwd=config.ROOT, check=False)
+        for pth in (reel_path, thumb_path):
+            subprocess.run(["git", "add", str(pth)], cwd=config.ROOT, check=False)
         subprocess.run(["git", "-c", "user.name=Claude", "-c", "user.email=noreply@anthropic.com",
-                        "commit", "-q", "-m", "agent: world cup standings carousel slides"],
+                        "commit", "-q", "-m", "agent: world cup standings reel"],
                        cwd=config.ROOT, check=False)
         subprocess.run(["git", "push", "-q"], cwd=config.ROOT, check=False)
-        urls = [config.media_public_url(Path(p).name) for p in rel]
         from tffw.publish import buffer_api
-        ext = buffer_api.publish_carousel(caption, urls, "World Cup group standings")
+        ext = buffer_api.publish(
+            caption, config.media_public_url(thumb_path.name), "World Cup group standings reel",
+            video_url=config.media_public_url(reel_path.name),
+        )
         result["posted"] = ext
         if ext:
             db.record_send(0, live=False, what="post")
