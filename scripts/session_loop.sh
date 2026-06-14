@@ -29,7 +29,7 @@ while true; do
     python -m tffw.main digest >/dev/null 2>&1 && touch "/tmp/tffw_digest_$(date -u +%F)"
   fi
 
-  git add data output dashboard >/dev/null 2>&1
+  git add data output dashboard assets >/dev/null 2>&1
   if ! git diff --cached --quiet; then
     git -c user.name="Claude" -c user.email="noreply@anthropic.com" \
       commit -q -m "agent: session run $(date -u +%FT%TZ)"
@@ -41,7 +41,7 @@ while true; do
 
   # publish autonomously via the Buffer token (.env); media is already pushed
   python -m tffw.main publish >/dev/null 2>&1 || echo "TFFW ERROR: publish crashed (cycle $i)"
-  git add data output dashboard >/dev/null 2>&1
+  git add data output dashboard assets >/dev/null 2>&1
   if ! git diff --cached --quiet; then
     git -c user.name="Claude" -c user.email="noreply@anthropic.com" \
       commit -q -m "agent: session publish $(date -u +%FT%TZ)"
