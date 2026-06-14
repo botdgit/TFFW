@@ -112,8 +112,8 @@ RECAP_RENDER_GRACE_MIN = _int("RECAP_RENDER_GRACE_MIN", 15)
 BRAND_HANDLE = os.environ.get("BRAND_HANDLE", "@thefootballfinalwhistle")
 BRAND_NAME = os.environ.get("BRAND_NAME", "The Football Final Whistle")
 # Palette derived from the brand logo (assets/brand/logo.png)
-BRAND_GREEN = "#73B633"
-BRAND_GREEN_DARK = "#0C3A17"
+BRAND_GREEN = "#5E8BCB"
+BRAND_GREEN_DARK = "#091627"
 BRAND_WHITE = "#FFFFFF"
 BRAND_OFFWHITE = "#F4F9EF"
 

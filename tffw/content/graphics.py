@@ -1,8 +1,8 @@
 """Branded graphic rendering with Pillow.
 
 Design system ("Final Whistle" brand):
-  • Palette from the club logo: brand green #73B633 on a deep pitch-green
-    gradient, white type, muted green-grey for meta text.
+  • Palette: light navy blue (#5E8BCB) on a deep navy gradient, white
+    type, muted blue-grey for meta text.
   • Type: Anton (condensed display, headlines/scores), Archivo Black
     (kickers/labels), Barlow Condensed (meta/supporting).
   • Every post carries the same chrome: white logo badge top-centre,
@@ -26,15 +26,16 @@ W, H = 1080, 1350
 MARGIN = 80
 
 # ── palette ─────────────────────────────────────────────────────────────
-GREEN = "#73B633"        # logo green
-GREEN_BRIGHT = "#8FD146"
-PITCH_TOP = "#0C3A17"    # background gradient
-PITCH_BOTTOM = "#04150A"
+# Brand colour is a light navy blue (names kept for compatibility).
+GREEN = "#5E8BCB"        # primary accent (light navy blue)
+GREEN_BRIGHT = "#8FB6EC"  # brighter accent for scores / CTAs
+PITCH_TOP = "#1C3A5E"    # background gradient (navy)
+PITCH_BOTTOM = "#091627"  # deep navy
 WHITE = "#FFFFFF"
-META = "#8FBF6B"         # muted green for meta text
+META = "#8FA8CC"         # muted blue for meta text
 LINE = (255, 255, 255, 22)  # faint pitch markings
-INK = "#0B2310"          # dark text on light surfaces
-CARD = "#F4F9EF"         # light surface
+INK = "#0A1A2E"          # dark navy text on light surfaces
+CARD = "#EFF4FB"         # light blue-tinted surface
 
 FONT_DISPLAY = config.FONT_DIR / "Anton-Regular.ttf"
 FONT_LABEL = config.FONT_DIR / "ArchivoBlack-Regular.ttf"
@@ -122,7 +123,7 @@ def _stadium_texture(img: Image.Image, seed: int) -> Image.Image:
     photo = _cover(photo.convert("RGB"), W, H, top_bias=((spread >> 8) % 70) / 100)
     # duotone: map luminance into the pitch palette, then blend subtly
     photo = photo.convert("L")
-    lo, hi = _hex(PITCH_BOTTOM), _hex("#2E6B3A")
+    lo, hi = _hex(PITCH_BOTTOM), _hex("#2E4D75")
     duo = Image.merge("RGB", [
         photo.point(lambda v, a=a, b=b: int(a + (b - a) * v / 255))
         for a, b in zip(lo, hi)
@@ -150,7 +151,7 @@ def _canvas(texture_seed: int | None = None) -> tuple[Image.Image, ImageDraw.Ima
     # soft radial glow behind the content area
     glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     gd = ImageDraw.Draw(glow)
-    gd.ellipse([W // 2 - 520, 330, W // 2 + 520, 1180], fill=(115, 182, 51, 26))
+    gd.ellipse([W // 2 - 520, 330, W // 2 + 520, 1180], fill=(*_hex(GREEN), 26))
     glow = glow.filter(ImageFilter.GaussianBlur(180))
     img.paste(Image.alpha_composite(img.convert("RGBA"), glow).convert("RGB"), (0, 0))
     draw = ImageDraw.Draw(img)
@@ -970,24 +971,24 @@ def _table(fmt: str, facts: dict) -> Image.Image:
         draw.text((x_right - draw.textlength(s, font=font), y_), s, font=font, fill=fill)
 
     hy = card_y0 + 26
-    draw.text((pos_x, hy), "#", font=fhead, fill="#5E7A52")
-    draw.text((team_x, hy), "TEAM", font=fhead, fill="#5E7A52")
-    rtext(p_r, hy, "P", fhead, "#5E7A52")
-    rtext(gd_r, hy, "GD", fhead, "#5E7A52")
-    rtext(pts_r, hy, "PTS", fhead, "#5E7A52")
+    draw.text((pos_x, hy), "#", font=fhead, fill="#6E84B0")
+    draw.text((team_x, hy), "TEAM", font=fhead, fill="#6E84B0")
+    rtext(p_r, hy, "P", fhead, "#6E84B0")
+    rtext(gd_r, hy, "GD", fhead, "#6E84B0")
+    rtext(pts_r, hy, "PTS", fhead, "#6E84B0")
 
     advance = facts.get("advance_places", 4)  # CL top-4 by default; WC groups = 2
     y = card_y0 + 70
     for i, r in enumerate(rows):
         if i % 2 == 1:
-            draw.rectangle([card_x0 + 14, y - 4, card_x1 - 14, y + row_h - 12], fill="#E8F2DF")
+            draw.rectangle([card_x0 + 14, y - 4, card_x1 - 14, y + row_h - 12], fill="#E6EEF8")
         if r["position"] <= advance:  # qualification/advancement marker
             draw.rectangle([card_x0 + 14, y - 4, card_x0 + 22, y + row_h - 12], fill=GREEN)
         draw.text((pos_x, y), str(r["position"]), font=frow, fill=INK)
         draw.text((team_x, y), str(r["team"])[:22].upper(), font=frow, fill=INK)
         rtext(p_r, y, str(r["played"]), frow, INK)
         rtext(gd_r, y, f'{r["gd"]:+d}', frow, INK)
-        rtext(pts_r, y + 6, str(r["points"]), fpts, "#3E7A1E")
+        rtext(pts_r, y + 6, str(r["points"]), fpts, "#2E5AA0")
         y += row_h
 
     _footer(draw, facts.get("date_label", ""))
