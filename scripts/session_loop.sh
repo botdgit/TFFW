@@ -56,6 +56,13 @@ while true; do
     fi
   fi
 
+  # daily group-standings carousel: once per UTC day in the 21:xx window
+  # (after the day's matches), auto-posted via Buffer
+  if [ "$(date -u +%H)" = "21" ] && [ ! -f "/tmp/tffw_standings_$(date -u +%F)" ]; then
+    python scripts/wc_standings_carousel.py --post >/dev/null 2>&1 && \
+      touch "/tmp/tffw_standings_$(date -u +%F)"
+  fi
+
   # periodic heartbeat (wall-clock gated, not cycle-gated, so re-arming the
   # loop does not re-trigger it). Emit at most once every ~6h.
   hb=data/.heartbeat_ts  # in-repo + gitignored so it survives /tmp wipes
