@@ -88,7 +88,7 @@ MEDIA_BASE_URL = os.environ.get("MEDIA_BASE_URL", "")
 REELS_ENABLED = _bool("REELS_ENABLED", True)
 COMPANION_STORIES = _bool("COMPANION_STORIES", True)
 MAX_POSTS_PER_RUN = _int("MAX_POSTS_PER_RUN", 5)
-MIN_MINUTES_BETWEEN_POSTS = _int("MIN_MINUTES_BETWEEN_POSTS", 5)
+MIN_MINUTES_BETWEEN_POSTS = _int("MIN_MINUTES_BETWEEN_POSTS", 12)
 MAX_POSTS_PER_DAY = _int("MAX_POSTS_PER_DAY", 60)
 # queued news older than this (e.g. after a publishing outage) is expired
 # rather than posted, so the feed never floods with stale "breaking" news
@@ -98,7 +98,7 @@ BUFFER_BACKOFF_H = _float("BUFFER_BACKOFF_H", 3.0)
 # Buffer/Instagram count posts + reels + stories toward a rolling 24h limit
 # (Buffer free = 50). Hold a margin, and reserve most of it for live events.
 DAILY_SEND_LIMIT = _int("DAILY_SEND_LIMIT", 45)
-NEWS_SEND_LIMIT = _int("NEWS_SEND_LIMIT", 6)
+NEWS_SEND_LIMIT = _int("NEWS_SEND_LIMIT", 16)
 # Two publishers can run: the session loop (low latency, "primary") and the
 # GitHub Actions cron ("backstop"). The backstop only publishes when the
 # primary has gone silent, so they never double-post the same queue.
