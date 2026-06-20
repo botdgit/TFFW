@@ -38,7 +38,14 @@ jobs:
           DRY_RUN: ${{ vars.DRY_RUN || 'false' }}
           COMPETITIONS: ${{ vars.COMPETITIONS || 'PL,CL,WC' }}
         run: |
+          git config user.name "Claude"
+          git config user.email "noreply@anthropic.com"
           python -m tffw.main digest
+          git add data output dashboard assets
+          if ! git diff --cached --quiet; then
+            git commit -q -m "agent: digest media $(date -u +%FT%TZ)"
+            git push -q 2>/dev/null || { git pull --rebase -X theirs >/dev/null 2>&1 && git push -q 2>/dev/null; } || true
+          fi
           python -m tffw.main publish
 
       - name: Commit state, media and dashboard

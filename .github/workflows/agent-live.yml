@@ -42,7 +42,17 @@ jobs:
           COMPETITIONS: ${{ vars.COMPETITIONS || 'PL,CL,WC' }}
         run: |
           echo "buffer secret present: ${BUFFER_ACCESS_TOKEN:+yes} (len ${#BUFFER_ACCESS_TOKEN})"
+          git config user.name "Claude"
+          git config user.email "noreply@anthropic.com"
           python -m tffw.main live
+          # push freshly-rendered media BEFORE publishing so story/reel URLs are
+          # live on the CDN this same run (otherwise stories 404 and slip to the
+          # next 5-min cron — the cause of multi-minute live delays)
+          git add data output dashboard assets
+          if ! git diff --cached --quiet; then
+            git commit -q -m "agent: live media $(date -u +%FT%TZ)"
+            git push -q 2>/dev/null || { git pull --rebase -X theirs >/dev/null 2>&1 && git push -q 2>/dev/null; } || true
+          fi
           python -m tffw.main publish
 
       - name: Commit state, media and dashboard

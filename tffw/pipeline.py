@@ -7,6 +7,7 @@ Modes (invoked by the GitHub Actions schedules via tffw.main):
   publish  — flush due queue items through the configured publisher
 """
 
+import re
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -196,8 +197,13 @@ def run_live() -> None:
                 [{"domain": m["source"], "title": "official match feed"}],
             )
 
-        # Kick-off
-        if m["status"] in ("IN_PLAY", "LIVE") and prev.get("status") in (None, "TIMED", "SCHEDULED"):
+        # Kick-off — only when the match is genuinely just starting. If our
+        # first sight of it is already underway (goals scored, or well past
+        # the opening minutes), skip the stale "KICK-OFF" card.
+        _mn = re.search(r"\d+", m.get("minute") or "")
+        _minute = int(_mn.group()) if _mn else None
+        if m["status"] in ("IN_PLAY", "LIVE") and prev.get("status") in (None, "TIMED", "SCHEDULED") \
+                and not scorers and (_minute is None or _minute <= 15):
             _queue(
                 "LIVE WHISTLE",
                 f"KICK-OFF: {teams}",
