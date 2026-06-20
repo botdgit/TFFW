@@ -262,18 +262,24 @@ def _gather_photos(post_id: int, facts: dict) -> list[Image.Image]:
                 queries.append(f"{facts[side]} national football team")
     else:
         queries, national = commons.entity_queries(facts.get("headline", "")), False
+    credits: list[str] = []
     try:
         for q in queries:
             if len(imgs) >= 3:
                 break
-            found = commons.find_photo(q, modern=national)
+            # Wikipedia article photo first (the real subject), then Commons
+            found = commons.wikipedia_photo(
+                q.replace(" national football team", "").replace(" footballer", "")) \
+                or commons.find_photo(q, modern=national)
             if not found or found["url"] in seen:
                 continue
             rel = commons.download(found, f"pod_{post_id}_{len(imgs)}.jpg")
             if rel:
                 add(rel); seen.add(found["url"])
+                credits.append(found.get("artist", "Wikimedia Commons"))
     except Exception as exc:
         db.log_error("podcast", f"gather photos: {exc}")
+    facts.setdefault("_photo_credits", credits or ["Wikimedia Commons"])
 
     # top up to 2-3 with varied stadium backgrounds
     bgs = sorted(g.BG_DIR.glob("stadium_*.jpg"))

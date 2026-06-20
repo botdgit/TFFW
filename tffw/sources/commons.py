@@ -71,6 +71,40 @@ def entity_from_headline(headline: str) -> str | None:
     return queries[0] if queries else None
 
 
+WIKI_REST = "https://en.wikipedia.org/api/rest_v1/page/summary/"
+
+
+def wikipedia_photo(query: str) -> dict | None:
+    """The lead photo of a subject's Wikipedia article — far more relevant
+    than a fuzzy Commons search (it's the actual player/manager). Only freely
+    licensed Commons photos are accepted; team/club logos (fair-use SVGs on
+    the English wiki) are skipped. Returns metadata or None."""
+    try:
+        resp = requests.get(WIKI_REST + query.replace(" ", "_"), headers=UA, timeout=15)
+        db.log_api("wikipedia", f"summary:{query}", resp.status_code, resp.ok)
+        if not resp.ok:
+            return None
+        d = resp.json()
+    except (requests.RequestException, ValueError) as exc:
+        db.log_error("wikipedia", f"summary {query}: {exc}")
+        return None
+    if d.get("type") != "standard":  # skip disambiguation / missing
+        return None
+    url = (d.get("originalimage") or d.get("thumbnail") or {}).get("source", "")
+    # accept only freely-licensed Commons raster photos (not en-wiki fair-use
+    # logos, not SVGs)
+    if "/wikipedia/commons/" not in url or url.lower().endswith(".svg"):
+        return None
+    return {
+        "url": url,
+        "title": d.get("title", query),
+        "license": "CC / Wikimedia Commons",
+        "artist": "Wikimedia Commons",
+        "width": (d.get("originalimage") or {}).get("width", 1000),
+        "recently_used": _recently_used(url),
+    }
+
+
 def find_photo(query: str, modern: bool = False) -> dict | None:
     """Search Commons for a freely licensed photo. Returns metadata dict
     or None when nothing suitably licensed/sized is found. With modern=True,

@@ -166,19 +166,17 @@ def queue_recap(facts: dict, sources: list) -> None:
     """Create the recap post a few minutes after full-time (autonomous
     path — narration text comes from the fact-grounded template)."""
     headline = f"RECAP: {facts.get('home')} {facts.get('home_score')}-{facts.get('away_score')} {facts.get('away')}"
-    script = voice.build_recap_script(facts)
     from . import captions
 
     caption, alt = captions.build_caption("FINAL WHISTLE", facts, 11)
     caption = caption.replace("FT:", "🎙️ MATCH RECAP —", 1)
     post_id = db.enqueue_post(
         fmt="FINAL WHISTLE", headline=headline, caption=caption, hashtags="",
-        alt_text=f"Voiced match recap video: {headline}", confidence=1.0,
+        alt_text=f"Podcast match recap video: {headline}", confidence=1.0,
         sources=sources, facts=facts, delay_minutes=4,
     )
     if post_id is None:
         return
     path = g.render(post_id, "FINAL WHISTLE", facts)  # thumbnail/fallback image
     db.update_post(post_id, image_path=str(path.relative_to(config.ROOT)))
-    render_recap(post_id, facts, script)
-    log.info("QUEUED recap #%d", post_id)
+    log.info("QUEUED recap #%d (podcast reel rendered at publish)", post_id)

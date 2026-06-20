@@ -74,20 +74,9 @@ def _queue(fmt: str, headline: str, facts: dict, confidence: float, sources: lis
     path = graphics.render(post_id, fmt, facts)
     db.update_post(post_id, image_path=str(path.relative_to(config.ROOT)))
 
-    # Reels drive far more reach than statics, so animate aggressively:
-    # every match moment gets the score-reveal reel; news with imagery
-    # gets a Ken Burns photo reel.
-    if config.REELS_ENABLED:
-        try:
-            if fmt in ("LIVE WHISTLE", "FINAL WHISTLE") and facts.get("home"):
-                graphics.render_reel(post_id, fmt, facts)
-            elif fmt in ("BREAKING", "TRANSFER WHISTLE", "VAR CHECK") and facts.get("photo_path"):
-                graphics.render_news_reel(post_id, fmt, facts)
-        except Exception as exc:
-            db.log_error("reel", f"post {post_id}: {exc}")
-
-    # match moments and fixture digests also get a 9:16 story card,
-    # posted to Stories alongside the feed post
+    # Feed posts (news + recaps) become two-host PODCAST reels, rendered on
+    # demand at publish time (heavy: TTS + photos). Live match moments go to
+    # Stories, which use the 9:16 story card rendered here.
     if (fmt in ("LIVE WHISTLE", "FINAL WHISTLE") and facts.get("home")) or facts.get("fixture_rows"):
         graphics.render_story(post_id, fmt, facts)
 
@@ -118,13 +107,15 @@ def _attach_photo(facts: dict, headline: str, claim_key: str) -> dict:
     photo background — the brand's reel-first, image-led format."""
     try:
         for query in commons.entity_queries(headline):
-            photo = commons.find_photo(query)
+            # Wikipedia's article photo (the actual subject) first, then a
+            # Commons search — both freely licensed
+            photo = commons.wikipedia_photo(query) or commons.find_photo(query)
             if not photo:
                 continue
             rel = commons.download(photo, f"src_{claim_key.split(':')[-1]}.jpg")
             if not rel:
                 continue
-            credit = f"PHOTO: {photo['artist']} / WIKIMEDIA COMMONS ({photo['license']})"
+            credit = f"PHOTO: {photo['artist']} ({photo['license']})"
             return {**facts, "photo_path": rel, "photo_credit": credit}
     except Exception as exc:
         db.log_error("commons", f"attach_photo: {exc}")
@@ -508,33 +499,31 @@ def _publish_one(post: dict) -> int:
         external_id = backend.publish_story(story_url)
         what = "story"
     else:
-        # feed post — a reel when an animated version exists
+        # feed post = two-host PODCAST reel (news + recaps). Render on demand
+        # the first time, then publish next cycle once the reel is on the CDN
+        # (Buffer/IG fetch the video from the public repo URL).
         video_file = config.MEDIA_DIR / f"post_{post['id']}.mp4"
-        is_recap = post["format"] == "FINAL WHISTLE" and (post["headline"] or "").upper().startswith("RECAP")
-        if is_recap and not video_file.exists():
-            # a recap's value is the voiced reel — render it on demand here
-            # (whichever publisher handles it), then hold ONE cycle: Buffer/IG
-            # fetch the video from the public repo URL, so it must be pushed
-            # before we can publish it. The next cycle publishes the reel.
+        caption = post["caption"]
+        if not video_file.exists():
             age_min = (datetime.now(timezone.utc) - _parse_dt(post["scheduled_for"])).total_seconds() / 60
             try:
-                from .content import recap, voice
-                recap.render_recap(post["id"], post["facts"], voice.build_recap_script(post["facts"]))
+                from .content import podcast
+                podcast.render_podcast_reel(post["id"], post["facts"], post["format"])
             except Exception as exc:
-                db.log_error("publish", f"recap render #{post['id']}: {exc}")
+                db.log_error("publish", f"podcast render #{post['id']}: {exc}")
             if video_file.exists():
-                log.info("publish: rendered recap #%d — publishing next cycle once pushed", post["id"])
+                creds = list(dict.fromkeys(post["facts"].get("_photo_credits") or []))
+                if creds and "📸" not in caption:
+                    caption = f"{caption}\n.\n📸 {' · '.join(creds)}"
+                    db.update_post(post["id"], caption=caption)
+                log.info("publish: rendered podcast reel #%d — publishing next cycle once pushed", post["id"])
                 return 0
-            # rendering unavailable (e.g. cron runner can't do TTS): don't hold
-            # forever — after a short grace, post the static recap card.
             if age_min < config.RECAP_RENDER_GRACE_MIN:
-                log.info("publish: recap #%d video not ready — retrying (%.0fm)", post["id"], age_min)
+                log.info("publish: reel #%d not ready — retrying (%.0fm)", post["id"], age_min)
                 return 0
-            log.info("publish: recap #%d video unavailable — posting static card", post["id"])
-        # the reel must already be live on the CDN; if a fresh render hasn't
-        # propagated yet Buffer 404s, the post stays queued and retries.
+            log.info("publish: reel #%d unavailable — posting static card", post["id"])
         video_url = config.media_public_url(video_file.name) if video_file.exists() else None
-        external_id = backend.publish(post["caption"], image_url, post["alt_text"], video_url=video_url)
+        external_id = backend.publish(caption, image_url, post["alt_text"], video_url=video_url)
         what = "post"
 
     if external_id:
