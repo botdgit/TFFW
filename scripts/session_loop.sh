@@ -7,6 +7,7 @@
 set -u
 BRANCH="claude/football-whistle-instagram-agent-au8zqt"
 cd /home/user/TFFW || exit 1
+pip install -q edge-tts >/dev/null 2>&1 || true
 i=0
 
 while true; do
