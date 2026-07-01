@@ -117,6 +117,14 @@ BRAND_GREEN_DARK = "#091627"
 BRAND_WHITE = "#FFFFFF"
 BRAND_OFFWHITE = "#F4F9EF"
 
+# Accent palette. The deep navy stays the base identity; the accent is the
+# punchy, scroll-stopping colour used for chips, scores, ticks and CTAs.
+# An electric lime on navy is a classic high-energy sports pairing and reads
+# far stronger in-feed than the previous muted blue. Both are env-overridable
+# so the whole look can be re-tuned without touching the render code.
+BRAND_ACCENT = os.environ.get("BRAND_ACCENT", "#C6F24E")
+BRAND_ACCENT_BRIGHT = os.environ.get("BRAND_ACCENT_BRIGHT", "#DBFF73")
+
 
 def media_public_url(filename: str) -> str:
     """Public URL for a generated image. Instagram/Buffer fetch media over

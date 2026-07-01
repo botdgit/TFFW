@@ -1,10 +1,14 @@
 """Branded graphic rendering with Pillow.
 
 Design system ("Final Whistle" brand):
-  • Palette: light navy blue (#5E8BCB) on a deep navy gradient, white
-    type, muted blue-grey for meta text.
+  • Palette: an electric-lime accent (#C6F24E) on a deep navy gradient,
+    white type, muted blue-grey for meta text. Lime-on-navy is a punchy,
+    high-energy sports pairing that stops the scroll far better than the
+    old muted blue accent. The accent is env-tunable (config.BRAND_ACCENT).
   • Type: Anton (condensed display, headlines/scores), Archivo Black
     (kickers/labels), Barlow Condensed (meta/supporting).
+  • Headlines set over photography carry a dark stroke so they stay legible
+    on any image, never relying on the gradient alone.
   • Every post carries the same chrome: white logo badge top-centre,
     format kicker chip, faint pitch markings, footer with handle + date.
 
@@ -26,9 +30,10 @@ W, H = 1080, 1350
 MARGIN = 80
 
 # ── palette ─────────────────────────────────────────────────────────────
-# Brand colour is a light navy blue (names kept for compatibility).
-GREEN = "#5E8BCB"        # primary accent (light navy blue)
-GREEN_BRIGHT = "#8FB6EC"  # brighter accent for scores / CTAs
+# Accent is an electric lime on deep navy (names kept for compatibility).
+# Sourced from config so it can be re-tuned via env without a code change.
+GREEN = config.BRAND_ACCENT          # primary accent (electric lime)
+GREEN_BRIGHT = config.BRAND_ACCENT_BRIGHT  # brighter accent for scores / CTAs
 PITCH_TOP = "#1C3A5E"    # background gradient (navy)
 PITCH_BOTTOM = "#091627"  # deep navy
 WHITE = "#FFFFFF"
@@ -189,6 +194,18 @@ def _tracked_width(draw: ImageDraw.ImageDraw, text: str,
     return sum(draw.textlength(c, font=font) + tracking for c in text) - (tracking if text else 0)
 
 
+def _display_line(draw: ImageDraw.ImageDraw, xy: tuple[float, float], text: str,
+                  font: ImageFont.FreeTypeFont, fill=WHITE, stroke: int = 0) -> None:
+    """Draw a headline line. A dark stroke keeps white type legible over
+    photography (and gives all display text a crisper, bolder edge) without
+    relying on the background gradient alone."""
+    if stroke:
+        draw.text(xy, text, font=font, fill=fill,
+                  stroke_width=stroke, stroke_fill=PITCH_BOTTOM)
+    else:
+        draw.text(xy, text, font=font, fill=fill)
+
+
 def _kicker(draw: ImageDraw.ImageDraw, fmt: str, y: int = 70) -> None:
     """Format chip: ● FORMAT NAME on a green pill, top-right corner so it
     never covers the middle of a photo background."""
@@ -295,20 +312,28 @@ def render(post_id: int, fmt: str, facts: dict) -> Path:
 
 # ── templates ───────────────────────────────────────────────────────────
 
-def _flag_band(img: Image.Image, team: str, y0: int, y1: int) -> Image.Image:
-    """Paste a darkened national flag behind a team row (no-op for clubs)."""
-    from . import flags
-
-    path = flags.flag_path(team)
-    if path is None:
-        return img
+def _flag_band(img: Image.Image, flag_file: Path, y0: int, y1: int) -> Image.Image:
+    """Paste a darkened national flag behind a team row. A strong
+    left-to-right scrim keeps the darkest area under the left-aligned team
+    name and scorer credits, so a busy flag crest (e.g. the Argentina sun)
+    can never wash the text out."""
     try:
-        flag = Image.open(path).convert("RGB")
+        flag = Image.open(flag_file).convert("RGB")
     except OSError:
         return img
-    band = _cover(flag, W, y1 - y0).filter(ImageFilter.GaussianBlur(2))
-    overlay = Image.new("RGBA", (W, y1 - y0), (*_hex(PITCH_BOTTOM), 195))
-    band = Image.alpha_composite(band.convert("RGBA"), overlay).convert("RGB")
+    h = y1 - y0
+    band = _cover(flag, W, h).filter(ImageFilter.GaussianBlur(3))
+    # base darkening so the whole band recedes behind the type
+    overlay = Image.new("RGBA", (W, h), (*_hex(PITCH_BOTTOM), 172))
+    # extra left-anchored scrim (opaque under the text column, fading right)
+    scrim = Image.new("RGBA", (W, h), (0, 0, 0, 0))
+    sd = ImageDraw.Draw(scrim)
+    text_col = W * 0.72
+    for x in range(W):
+        a = int(220 * max(0.0, 1 - x / text_col))
+        sd.line([(x, 0), (x, h)], fill=(*_hex(PITCH_BOTTOM), a))
+    band = Image.alpha_composite(band.convert("RGBA"), overlay)
+    band = Image.alpha_composite(band, scrim).convert("RGB")
     img.paste(band, (0, y0))
     return img
 
@@ -317,9 +342,17 @@ def _scoreboard(fmt: str, facts: dict) -> Image.Image:
     img, draw = _canvas()
 
     home, away = facts.get("home", "?"), facts.get("away", "?")
-    # national-team matches get flag panels behind the team rows
-    img = _flag_band(img, facts.get("home_full", home), 560, 850)
-    img = _flag_band(img, facts.get("away_full", away), 852, 1142)
+    # national-team matches get flag panels behind the team rows — but only
+    # when BOTH teams resolve to a flag, so the card is never lopsided (one
+    # row with imagery, the other flat) when a flag hasn't been cached yet.
+    from . import flags
+
+    home_flag = flags.flag_path(facts.get("home_full", home))
+    away_flag = flags.flag_path(facts.get("away_full", away))
+    has_flags = bool(home_flag and away_flag)
+    if has_flags:
+        img = _flag_band(img, home_flag, 560, 850)
+        img = _flag_band(img, away_flag, 852, 1142)
     draw = ImageDraw.Draw(img)
 
     _kicker(draw, fmt)
@@ -352,14 +385,20 @@ def _scoreboard(fmt: str, facts: dict) -> Image.Image:
     fname = display(size)
     fscore = display(150)
 
+    # over a flag band, stroke the name and brighten the scorer credits so
+    # they stay crisp against the imagery; on plain navy no stroke is needed
+    name_stroke = 3 if has_flags else 0
+    scorer_fill = "#E4ECF8" if has_flags else META
+    scorer_stroke = 2 if has_flags else 0
+
     scorers = facts.get("scorers") or []
     for side, (name, score, y) in zip(("home", "away"), rows):
         ny = y + (150 - size) // 2 + 10
-        draw.text((MARGIN, ny), name.upper(), font=fname, fill=WHITE)
+        _display_line(draw, (MARGIN, ny), name.upper(), fname, WHITE, name_stroke)
         if has_score:
             s = str(score)
             sw = draw.textlength(s, font=fscore)
-            draw.text((score_x - sw, y), s, font=fscore, fill=GREEN_BRIGHT)
+            _display_line(draw, (score_x - sw, y), s, fscore, GREEN_BRIGHT, name_stroke)
         # scorer credits under the team name (from the official feed)
         side_scorers = [sc for sc in scorers if sc.get("side") == side and sc.get("name")]
         if side_scorers:
@@ -372,7 +411,8 @@ def _scoreboard(fmt: str, facts: dict) -> Image.Image:
             )
             while draw.textlength(line, font=fsc) > W - 2 * MARGIN - 200 and fsc.size > 26:
                 fsc = meta_light(fsc.size - 2)
-            draw.text((MARGIN + 4, ny + size + 14), line, font=fsc, fill=META)
+            draw.text((MARGIN + 4, ny + size + 14), line, font=fsc, fill=scorer_fill,
+                      stroke_width=scorer_stroke, stroke_fill=PITCH_BOTTOM)
 
     if not has_score:
         # kick-off card: "VS" divider between the rows
@@ -406,11 +446,12 @@ def _headline_card(fmt: str, facts: dict) -> Image.Image:
     block_h = len(lines) * line_h
     y = band_top + (band_bottom - band_top - block_h) // 2
 
-    # green tick mark above the headline
+    # accent tick mark above the headline
     draw.rectangle([MARGIN, y - 36, MARGIN + 110, y - 22], fill=GREEN)
 
+    # the headline card can sit over a stadium texture, so stroke for safety
     for line in lines:
-        draw.text((MARGIN, y), line, font=fh, fill=WHITE)
+        _display_line(draw, (MARGIN, y), line, fh, WHITE, stroke=2)
         y += line_h
 
     _footer(draw, facts.get("date_label", ""))
@@ -464,8 +505,10 @@ def _photo_card(fmt: str, facts: dict) -> Image.Image:
     block_h = len(lines) * line_h
     y = band_bottom - block_h
     draw.rectangle([MARGIN, y - 32, MARGIN + 110, y - 18], fill=GREEN)
+    # full-bleed photo behind the type — stroke every line so it reads on
+    # any image, not just where the gradient happens to be strong
     for line in lines:
-        draw.text((MARGIN, y), line, font=fh, fill=WHITE)
+        _display_line(draw, (MARGIN, y), line, fh, WHITE, stroke=3)
         y += line_h
 
     _footer(draw, facts.get("date_label", ""))
@@ -667,7 +710,7 @@ def _story_headline(fmt: str, facts: dict) -> Image.Image:
     y = 700 + (760 - block_h) // 2
     draw.rectangle([margin, y - 36, margin + 120, y - 20], fill=GREEN)
     for line in lines:
-        draw.text((margin, y), line, font=fh, fill=WHITE)
+        _display_line(draw, (margin, y), line, fh, WHITE, stroke=2)
         y += line_h
 
     fy = RH - 150
@@ -745,7 +788,7 @@ def render_news_reel(post_id: int, fmt: str, facts: dict) -> Path | None:
     y = 1680 - len(lines) * line_h - 90
     td.rectangle([margin, y - 36, margin + 120, y - 20], fill=GREEN)
     for line in lines:
-        td.text((margin, y), line, font=fh, fill=WHITE)
+        _display_line(td, (margin, y), line, fh, WHITE, stroke=3)
         y += line_h
     fy = RH - 140
     td.line([(margin, fy), (RW - margin, fy)], fill=(255, 255, 255, 38), width=2)

@@ -5,7 +5,12 @@ presenter voice. Note: ElevenLabs blocks FREE-tier TTS from datacenter IPs,
 so on free tier the fallback engages automatically from cloud runners; a
 paid ElevenLabs plan activates the chosen voice with no code change.
 
-Fallback: Microsoft Edge neural TTS (free, keyless): en-GB-RyanNeural.
+Fallback: Microsoft Edge neural TTS (free, keyless). Default is
+en-US-AvaMultilingualNeural — Microsoft's newest US-female voice, markedly
+more lifelike and expressive than the older Aria newscast voice. Swap it
+without a code change via EDGE_TTS_VOICE, or dial the pace with EDGE_TTS_RATE.
+Other natural US-female options: en-US-EmmaMultilingualNeural (warmer),
+en-US-JennyNeural (friendly), en-US-AriaNeural (classic newscast).
 """
 
 import os
@@ -21,10 +26,13 @@ log = get_logger("voice")
 
 ELEVEN_KEY = os.environ.get("ELEVENLABS_API_KEY", "")
 # American woman presenter. ElevenLabs "Rachel" (a default US female voice)
-# when the paid plan is active; Microsoft Aria (US female, newscast tone) on
-# the free edge-tts fallback that actually runs from cloud runners.
+# when the paid plan is active; on the free edge-tts fallback that actually
+# runs from cloud runners, Microsoft "Ava" — a newer, more natural US-female
+# neural voice than the previous Aria newscast default.
 ELEVEN_VOICE = os.environ.get("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
-EDGE_VOICE = os.environ.get("EDGE_TTS_VOICE", "en-US-AriaNeural")
+EDGE_VOICE = os.environ.get("EDGE_TTS_VOICE", "en-US-AvaMultilingualNeural")
+# a touch of extra pace keeps the recap punchy without sounding rushed
+EDGE_RATE = os.environ.get("EDGE_TTS_RATE", "+6%")
 
 
 def tts(text: str, out_path) -> bool:
@@ -74,7 +82,7 @@ def _edge(text: str, out_path) -> bool:
         import edge_tts
 
         async def _run():
-            await edge_tts.Communicate(text, voice=EDGE_VOICE, rate="+3%").save(str(out_path))
+            await edge_tts.Communicate(text, voice=EDGE_VOICE, rate=EDGE_RATE).save(str(out_path))
 
         asyncio.run(_run())
         ok = out_path.exists() and out_path.stat().st_size > 10_000
@@ -83,6 +91,30 @@ def _edge(text: str, out_path) -> bool:
     except Exception as exc:
         db.log_error("voice", f"edge-tts: {exc}")
         return False
+
+
+# Rotating openers/intros/closers so consecutive recaps don't all start and
+# end with the identical line. Seeded from the match facts, so the choice is
+# deterministic per game (the same match always narrates the same way) while
+# the feed as a whole stops sounding like a template.
+_OPENERS = (
+    "Welcome back to The Football Final Whistle.",
+    "This is The Football Final Whistle.",
+    "The Football Final Whistle here.",
+    "You're listening to The Football Final Whistle.",
+)
+_INTROS = (
+    "{opener} Here's the story of {home} against {away}{comp}.",
+    "{opener} Let's run through {home} and {away}{comp}.",
+    "{opener} Here's how {home} and {away} played out{comp}.",
+    "{opener} Your full-time recap of {home} against {away}{comp}.",
+)
+_CLOSERS = (
+    "Follow The Football Final Whistle for every goal, every game.",
+    "That's the full whistle — follow for every goal, every game.",
+    "Stay with The Football Final Whistle, every goal, every game.",
+    "Hit follow for every goal, every game.",
+)
 
 
 def build_recap_script(facts: dict) -> str:
@@ -101,8 +133,12 @@ def build_recap_script(facts: dict) -> str:
         return int(m.group()) if m else 0
 
     scorers = sorted(scorers, key=minute_n)
-    lines = [f"Welcome back to The Football Final Whistle — your recap of "
-             f"{home} against {away} in {comp}."]
+    # deterministic per-match rotation of the opening/closing lines
+    seed = (int(hs or 0) * 7 + int(as_ or 0) * 13 + len(home) + len(away))
+    comp_clause = f" in {comp}" if comp and comp != "the match" else ""
+    intro = _INTROS[(seed // 3) % len(_INTROS)].format(
+        opener=_OPENERS[seed % len(_OPENERS)], home=home, away=away, comp=comp_clause)
+    lines = [intro]
 
     h = a = 0
     home_trailed = away_trailed = False
@@ -159,7 +195,7 @@ def build_recap_script(facts: dict) -> str:
             comeback = home_trailed if hs > as_ else away_trailed
             tail = " — a comeback to savour" if comeback else ""
             lines.append(f"It finished {_num(max(hs, as_))}–{_num(min(hs, as_))} to {winner}{tail}.")
-    lines.append("Follow The Football Final Whistle for every goal, every game.")
+    lines.append(_CLOSERS[seed % len(_CLOSERS)])
     return " ".join(lines)
 
 
